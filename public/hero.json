@@ -1,0 +1,15 @@
+{
+  "badge": "Freedom Promise 2026",
+  "titleMain": "Welcome to 3ZF",
+  "titleSub": "(Three Zeros of Freedom)",
+  "tagline": "— একটি ন্যায়ভিত্তিক, মানবিক সমাজের পথে",
+  "zeros": [
+    { "en": "Zero Interest", "bn": "শূন্য সুদ" },
+    { "en": "Zero Exploitation", "bn": "শূন্য শোষণ" },
+    { "en": "Zero Ignorance", "bn": "শূন্য অজ্ঞতা" }
+  ],
+  "description": "3ZF (Three Zeros of Freedom) একটি সামাজিক, মানবিক ও উন্নয়নমূলক উদ্যোগ, যার লক্ষ্য একটি ন্যায্য, শোষণমুক্ত এবং জ্ঞানসমৃদ্ধ বাংলাদেশ গঠন। আমরা মানুষের আর্থিক মুক্তি, সামাজিক নিরাপত্তা এবং সচেতনতা বৃদ্ধির জন্য বিভিন্ন প্রকল্প পরিচালনা করি—দেশের প্রতিটি শ্রেণি-পেশার মানুষের জন্য।",
+  "videoUrl": "https://www.youtube.com/embed/cqb6aO_BYsc?si=Z6uv8L5J6Ce0YM_A",
+  "ctaPrimary": "Join Community",
+  "ctaSecondary": "Learn More"
+}

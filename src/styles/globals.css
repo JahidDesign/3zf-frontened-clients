@@ -1,0 +1,137 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Sora:wght@400;500;600;700;800&family=Noto+Sans+Bengali:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-inter: 'Inter', system-ui, sans-serif;
+  --font-sora: 'Sora', system-ui, sans-serif;
+  --font-noto-bengali: 'Noto Sans Bengali', system-ui, sans-serif;
+
+  /* Brand */
+  --color-brand: #6B46C1;
+  --color-brand-light: #805AD5;
+  --color-brand-dark: #553C9A;
+
+  /* Light mode surfaces */
+  --color-bg: #ffffff;
+  --color-bg-secondary: #f8f7ff;
+  --color-bg-tertiary: #f0edff;
+  --color-bg-hover: #f5f3ff;
+  --color-border: #e8e4f3;
+  --color-text: #1a1025;
+  --color-text-secondary: #6b7280;
+  --color-text-muted: #9ca3af;
+
+  /* Sidebar */
+  --sidebar-width: 280px;
+  --right-panel-width: 320px;
+  --navbar-height: 60px;
+}
+
+.dark {
+  --color-bg: #1a1625;
+  --color-bg-secondary: #231e35;
+  --color-bg-tertiary: #2d2845;
+  --color-bg-hover: #332d4a;
+  --color-border: #3d3660;
+  --color-text: #f0edff;
+  --color-text-secondary: #a89dc8;
+  --color-text-muted: #6b5f8a;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font-inter);
+  background-color: var(--color-bg-secondary);
+  color: var(--color-text);
+  transition: background-color 0.2s, color 0.2s;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-brand-light); }
+
+/* Bengali font class */
+.font-bengali { font-family: var(--font-noto-bengali) !important; }
+
+/* Card */
+.card {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+/* Glass effect */
+.glass {
+  background: rgba(255,255,255,0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.3);
+}
+.dark .glass {
+  background: rgba(26,22,37,0.85);
+  border-color: rgba(61,54,96,0.4);
+}
+
+/* Brand gradient */
+.gradient-brand {
+  background: linear-gradient(135deg, #6B46C1 0%, #805AD5 50%, #9F7AEA 100%);
+}
+
+/* Input styles */
+input, textarea, select {
+  background: var(--color-bg);
+  color: var(--color-text);
+  border: 1.5px solid var(--color-border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  width: 100%;
+  font-family: inherit;
+  font-size: 14px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  outline: none;
+}
+input:focus, textarea:focus, select:focus {
+  border-color: var(--color-brand);
+  box-shadow: 0 0 0 3px rgba(107,70,193,0.15);
+}
+
+/* Prose */
+.prose { line-height: 1.7; }
+
+@layer components {
+  .btn-primary {
+    @apply gradient-brand text-white px-5 py-2.5 rounded-xl font-medium text-sm
+           hover:opacity-90 active:scale-[0.98] transition-all duration-200
+           disabled:opacity-50 disabled:cursor-not-allowed shadow-brand;
+  }
+  .btn-secondary {
+    @apply bg-transparent border border-[var(--color-border)] text-[var(--color-text)]
+           px-5 py-2.5 rounded-xl font-medium text-sm
+           hover:bg-[var(--color-bg-hover)] active:scale-[0.98] transition-all duration-200;
+  }
+  .btn-ghost {
+    @apply bg-transparent text-[var(--color-text-secondary)] px-3 py-2 rounded-lg text-sm
+           hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text)] transition-all;
+  }
+  .nav-link {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+           text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]
+           hover:text-[var(--color-text)] transition-all duration-200;
+  }
+  .nav-link.active {
+    @apply bg-[var(--color-bg-tertiary)] text-[var(--color-brand)] font-semibold;
+  }
+  .avatar {
+    @apply rounded-full object-cover flex-shrink-0;
+  }
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+}

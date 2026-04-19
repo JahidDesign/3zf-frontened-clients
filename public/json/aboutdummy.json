@@ -1,0 +1,20 @@
+{
+  "about": {
+    "hero": {
+      "title": "BEYOND A FOUNDATION",
+      "highlight": "MANIFESTO",
+      "description": "3ZF is a radical rethink of social architecture. We believe freedom isn't given; it's built on three pillars of zero compromise.",
+      "video": "about-manifesto-id"
+    },
+    "pillars": [
+      { "id": "01", "title": "ZERO INTEREST", "desc": "Removing debt-traps from the economy." },
+      { "id": "02", "title": "ZERO EXPLOITATION", "desc": "Ensuring fair value for every human effort." },
+      { "id": "03", "title": "ZERO IGNORANCE", "desc": "Universal access to truth and technology." }
+    ],
+    "stats": [
+      { "label": "Community Members", "value": "50K+" },
+      { "label": "Interest Saved", "value": "$2.4M" },
+      { "label": "Active Initiatives", "value": "120+" }
+    ]
+  }
+}
