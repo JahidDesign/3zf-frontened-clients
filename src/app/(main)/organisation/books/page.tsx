@@ -3,8 +3,8 @@
 'use client';
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import MainNavbar from '@/components/layout/MainNavbar';
-import MainFooter from '@/components/layout/MainFooter';
+import MainNavbar from '@/components/layout/Navbar';
+import MainFooter from '@/components/layout/Footer';
 import api from '@/lib/api';
 import { useT } from '@/hooks/useT';
 import Link from 'next/link';

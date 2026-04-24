@@ -7,8 +7,8 @@ import {
   Heart, BookOpen, CreditCard, Clock, Image as ImageIcon,
   Users, ThumbsUp, ThumbsDown, MapPin, Timer, CheckCircle, X,
 } from 'lucide-react';
-import MainNavbar from '@/components/layout/MainNavbar';
-import MainFooter from '@/components/layout/MainFooter';
+import MainNavbar from '@/components/layout/Navbar';
+import MainFooter from '@/components/layout/Footer';
 import api from '@/lib/api';
 import useAuthStore from '@/store/authStore';
 

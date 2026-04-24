@@ -9,8 +9,8 @@ import {
   Heart, Gift, BookOpen, Users, CreditCard,
   Clock, Image as ImageIcon, ChevronRight, CheckCircle,
 } from 'lucide-react';
-import MainNavbar from '@/components/layout/MainNavbar';
-import MainFooter from '@/components/layout/MainFooter';
+import MainNavbar from '@/components/layout/Navbar';
+import MainFooter from '@/components/layout/Footer';
 import PaymentGateway from '@/components/payment/PaymentGateway';
 import useAuthStore from '@/store/authStore';
 import Link from 'next/link';

@@ -2,8 +2,8 @@
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { Users, Target, Heart, Globe, Shield, Zap, ArrowRight, CheckCircle } from 'lucide-react';
-import MainNavbar from '@/components/layout/MainNavbar';
-import MainFooter from '@/components/layout/MainFooter';
+import MainNavbar from '@/components/layout/Navbar';
+import MainFooter from '@/components/layout/Footer';
 import FounderPage from '@/components/page/Founderpage';
 
 const VALUES = [

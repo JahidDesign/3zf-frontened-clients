@@ -5,13 +5,13 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Play, Heart, ZoomIn } from 'lucide-react';
-import MainNavbar from '@/components/layout/MainNavbar';
-import MainFooter from '@/components/layout/MainFooter';
+import MainNavbar from '@/components/layout/Navbar';
+import MainFooter from '@/components/layout/Footer';
 import api from '@/lib/api';
 
 const CATEGORIES = ['All', 'Events', 'Community', 'Nature', 'Organisation', 'Others'];
 
-export function GalleryPage() {
+ function GalleryPage() {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState('');

@@ -4,8 +4,8 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Calendar, MapPin, Users, Clock, ExternalLink, Search } from 'lucide-react';
 import { format, isPast, isFuture } from 'date-fns';
-import MainNavbar from '@/components/layout/MainNavbar';
-import MainFooter from '@/components/layout/MainFooter';
+import MainNavbar from '@/components/layout/Navbar';
+import MainFooter from '@/components/layout/Footer';
 import api from '@/lib/api';
 
 export default function EventsPage() {

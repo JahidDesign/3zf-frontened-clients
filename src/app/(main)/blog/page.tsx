@@ -4,8 +4,8 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Clock, Eye, Heart, BookOpen, Tag } from 'lucide-react';
 import { format } from 'date-fns';
-import MainNavbar from '@/components/layout/MainNavbar';
-import MainFooter from '@/components/layout/MainFooter';
+import MainNavbar from '@/components/layout/Navbar';
+import MainFooter from '@/components/layout/Footer';
 import api from '@/lib/api';
 
 const CATEGORIES = ['All', 'News', 'Technology', 'Community', 'Health', 'Education', 'Sports', 'Culture'];

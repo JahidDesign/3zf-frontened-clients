@@ -93,6 +93,12 @@ export default function MainNavbar() {
       image: '/icons/supershop.png',
     },
     {
+      key: 'blood',
+      href: '/blood',
+      label: t.nav.blood,
+      image: '/icons/blood.webp',
+    },
+    {
       key: 'more',
       label: lang === 'bn' ? 'আরো' : 'More',
       image: '/icons/more.png',
@@ -106,6 +112,7 @@ export default function MainNavbar() {
   ];
 
   // ── image box: active হলে brand-tinted bg, otherwise plain ──
+  // Icons always show in their NATIVE colors (no filter override)
   const NavImage = ({
     image,
     label,
@@ -121,7 +128,7 @@ export default function MainNavbar() {
         width: 36,
         height: 36,
         background: active
-          ? 'var(--color-brand)'
+          ? 'var(--color-brand-soft, rgba(107,70,193,0.15))'
           : 'var(--color-bg-hover)',
       }}
     >
@@ -133,15 +140,17 @@ export default function MainNavbar() {
         className="object-cover"
         style={{
           padding: active ? 6 : 7,
-          filter: active
-            ? 'brightness(0) invert(1)'          // active → white icon
-            : theme === 'dark'
-              ? 'brightness(0) invert(1) opacity(0.7)'  // dark mode → light icon
-              : 'none',                            // light mode → original color
+          filter: 'none', // ← native image colors always
         }}
       />
     </span>
   );
+
+  // Check if the user has admin access
+  const isAdmin =
+    user?.role === 'admin' ||
+    user?.role === 'superadmin' ||
+    user?.email === 'asadforex2025@gmail.com';
 
   return (
     <header
@@ -375,7 +384,8 @@ export default function MainNavbar() {
                         {t.nav.settings}
                       </Link>
 
-                      {(user.role === 'admin' || user.role === 'superadmin') && (
+                      {/* Admin panel — visible for admin roles OR the specific email */}
+                      {isAdmin && (
                         <Link
                           href="/admin"
                           className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-[var(--color-bg-hover)] transition-colors"
@@ -483,14 +493,14 @@ export default function MainNavbar() {
                       `}
                       onClick={() => setMobileOpen(false)}
                     >
-                      {/* Mobile image — full fill square */}
+                      {/* Mobile image — native colors, no filter */}
                       <span
                         className="relative flex-shrink-0 rounded-lg overflow-hidden"
                         style={{
                           width: 36,
                           height: 36,
                           background: pathname === item.href
-                            ? 'var(--color-brand)'
+                            ? 'var(--color-brand-soft, rgba(107,70,193,0.15))'
                             : 'var(--color-bg-hover)',
                         }}
                       >
@@ -502,11 +512,7 @@ export default function MainNavbar() {
                           className="object-cover"
                           style={{
                             padding: 6,
-                            filter: pathname === item.href
-                              ? 'brightness(0) invert(1)'
-                              : theme === 'dark'
-                                ? 'brightness(0) invert(1) opacity(0.7)'
-                                : 'none',
+                            filter: 'none', // ← native image colors always
                           }}
                         />
                       </span>
@@ -540,31 +546,45 @@ export default function MainNavbar() {
                 <LanguageSwitcher variant="badge" />
                 <button
                   onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                  className="btn-ghost flex items-center gap-1.5 text-xs px-3 py-1.5"
+                  className="ml-auto btn-ghost w-9 h-9 flex items-center justify-center p-0"
                 >
                   {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-                  {theme === 'dark' ? t.common.lightMode : t.common.darkMode}
                 </button>
               </div>
 
+              {/* Mobile auth buttons */}
               {!isAuthenticated && (
-                <div className="pt-2 flex gap-2 px-1">
+                <div className="flex gap-2 px-3 pt-1">
                   <Link
                     href="/login"
-                    className="btn-secondary flex-1 text-center text-sm py-2.5"
+                    className="btn-secondary text-sm py-2 flex-1 text-center"
                     onClick={() => setMobileOpen(false)}
                   >
                     {t.nav.login}
                   </Link>
                   <Link
                     href="/register"
-                    className="btn-primary flex-1 text-center text-sm py-2.5"
+                    className="btn-primary text-sm py-2 flex-1 text-center"
                     onClick={() => setMobileOpen(false)}
                   >
                     {t.nav.register}
                   </Link>
                 </div>
               )}
+
+              {/* Mobile admin link */}
+              {isAuthenticated && isAdmin && (
+                <Link
+                  href="/admin"
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors hover:bg-[var(--color-bg-hover)]"
+                  style={{ color: 'var(--color-brand)' }}
+                  onClick={() => setMobileOpen(false)}
+                >
+                  <span className="text-base">⚡</span>
+                  <span className="text-sm font-medium">{t.nav.adminPanel}</span>
+                </Link>
+              )}
+
             </nav>
           </motion.div>
         )}

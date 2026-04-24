@@ -6,8 +6,8 @@ import { z } from 'zod';
 import { motion } from 'framer-motion';
 import { Send, Phone, Mail, MapPin, CheckCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
-import MainNavbar from '@/components/layout/MainNavbar';
-import MainFooter from '@/components/layout/MainFooter';
+import MainNavbar from '@/components/layout/Navbar';
+import MainFooter from '@/components/layout/Footer';
 import api from '@/lib/api';
 
 const schema = z.object({

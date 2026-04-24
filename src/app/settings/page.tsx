@@ -6,7 +6,7 @@ import { useForm } from 'react-hook-form';
 import { User, Lock, Bell, Eye, Trash2, Globe, Moon, Sun, LogOut, Save, Camera, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useTheme } from 'next-themes';
-import MainNavbar from '@/components/layout/MainNavbar';
+import MainNavbar from '@/components/layout/Navbar';
 import useAuthStore from '@/store/authStore';
 import { useT } from '@/hooks/useT';
 import api from '@/lib/api';

@@ -5,8 +5,8 @@
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { Heart, Target, DollarSign, Calendar, Users, Handshake, Award, ArrowRight } from 'lucide-react';
-import MainNavbar from '@/components/layout/MainNavbar';
-import MainFooter from '@/components/layout/MainFooter';
+import MainNavbar from '@/components/layout/Navbar';
+import MainFooter from '@/components/layout/Footer';
 
 const NAV_ITEMS = ['Members', 'Mission', 'Funding', 'Events', 'Leaderboard', 'Partners'];
 const STATS = [
@@ -22,7 +22,7 @@ const MISSIONS = [
 ];
 const PARTNERS = ['UN Development Programme', 'BRAC', 'Grameen Foundation', 'ActionAid', 'CARE Bangladesh', 'Plan International'];
 
-export function AssociationPage() {
+ function AssociationPage() {
   return (
     <div className="min-h-screen" style={{ background: 'var(--color-bg-secondary)' }}>
       <MainNavbar />

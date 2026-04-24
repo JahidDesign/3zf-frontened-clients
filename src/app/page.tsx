@@ -1,8 +1,8 @@
 'use client';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import MainNavbar from '@/components/layout/MainNavbar';
-import MainFooter from '@/components/layout/MainFooter';
+import MainNavbar from '@/components/layout/Navbar';
+import MainFooter from '@/components/layout/Footer';
 import Hero from '@/components/page/Hero';
 import { useT } from '@/hooks/useT';
 import { Users, Building2, Heart, ShoppingBag, Calendar, BookOpen, Image, ArrowRight, Globe, Shield, Zap } from 'lucide-react';
