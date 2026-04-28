@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import api from '@/lib/axios';
 import  MainNavbar  from '@/components/layout/Navbar';
 import  MainFooter  from '@/components/layout/Footer';
-import { useAuthStore } from '@/store/auth.store';
+import  useAuthStore  from '@/store/authStore';
 import { formatDistanceToNow, format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { Droplets, MapPin, Phone, Clock, CheckCircle, XCircle, AlertTriangle, ArrowLeft, User } from 'lucide-react';

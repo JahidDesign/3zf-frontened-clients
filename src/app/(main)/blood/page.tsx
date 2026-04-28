@@ -6,7 +6,7 @@ import Link from 'next/link';
 import api from '@/lib/axios';
 import MainNavbar from '@/components/layout/Navbar';
 import MainFooter from '@/components/layout/Footer';
-import { useAuthStore } from '@/store/auth.store';
+import  useAuthStore  from '@/store/authStore';
 import { useT } from '@/lib/i18n';
 import { formatDistanceToNow } from 'date-fns';
 import toast from 'react-hot-toast';

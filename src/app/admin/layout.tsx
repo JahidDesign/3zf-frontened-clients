@@ -2,9 +2,9 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useAuthStore } from '@/store/auth.store';
+import useAuthStore from '@/store/auth.store';
 import { useQuery } from '@tanstack/react-query';
-import api from '@/lib/axios';
+import api from '@/lib/api';
 import {
   BarChart2, Users, Building2, ShoppingBag, Package, Droplets,
   CalendarDays, BookOpen, Images, Phone, Heart,
@@ -28,8 +28,19 @@ const nav = [
   { href: '/admin/contact',       icon: Phone,        label: 'Contact' },
 ];
 
-// ─── Admin email that always gets admin access ────────────────
 const ADMIN_EMAIL = 'asadforex2025@gmail.com';
+
+// ─── Loading spinner ──────────────────────────────────────────
+function LoadingScreen() {
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-950">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm text-gray-400">Loading...</p>
+      </div>
+    </div>
+  );
+}
 
 // ─── Sidebar inner component ──────────────────────────────────
 function SidebarContent({
@@ -59,7 +70,6 @@ function SidebarContent({
             <p className="text-xs text-gray-400 mt-0.5">Control Panel v2</p>
           </div>
         </Link>
-        {/* Close button — mobile only */}
         <button
           onClick={onClose}
           className="lg:hidden p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
@@ -124,43 +134,59 @@ function SidebarContent({
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router   = useRouter();
-  const { user, logout } = useAuthStore();
+
+  const { user, logout, isHydrated, isLoading } = useAuthStore();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   // Close drawer on route change
   useEffect(() => { setDrawerOpen(false); }, [pathname]);
 
-  // Fetch badge counts
-  const { data: stats } = useQuery<Record<string, number>>({
-    queryKey: ['admin-badge-stats'],
-    queryFn: () => api.get('/admin/dashboard').then((r) => r.data.stats),
-    refetchInterval: 60_000,
-    enabled: !!user,
-  });
-
-  // Access check — role OR specific email
   const hasAccess =
     user?.role === 'admin' ||
     user?.role === 'superadmin' ||
     user?.email === ADMIN_EMAIL;
 
-  // Redirect non-admins
+  // ─── Redirect logic — isHydrated না হওয়া পর্যন্ত অপেক্ষা করুন ───
   useEffect(() => {
-    if (user && !hasAccess) {
+    if (!isHydrated) return; // store এখনো localStorage থেকে load হয়নি
+
+    if (!user) {
+      router.replace('/login');
+      return;
+    }
+
+    if (!hasAccess) {
       router.replace('/');
     }
-  }, [user, hasAccess, router]);
+  }, [isHydrated, user, hasAccess, router]);
 
-  // Current page label for topbar
+  // Fetch badge counts — শুধু access থাকলে
+  const { data: stats } = useQuery<Record<string, number>>({
+    queryKey: ['admin-badge-stats'],
+    queryFn: () => api.get('/admin/dashboard').then((r) => r.data.stats),
+    refetchInterval: 60_000,
+    enabled: !!user && hasAccess,
+  });
+
+  const handleLogout = async () => {
+    await logout();
+    router.push('/login');
+  };
+
+  // ─── Hydration বা loading চলাকালীন spinner দেখান ───────────────
+  if (!isHydrated || isLoading) {
+    return <LoadingScreen />;
+  }
+
+  // ─── Access নেই — redirect হচ্ছে, blank দেখান ─────────────────
+  if (!user || !hasAccess) {
+    return <LoadingScreen />;
+  }
+
   const pageLabel =
     nav.find(
       (n) => pathname === n.href || (n.href !== '/admin' && pathname.startsWith(n.href + '/'))
     )?.label ?? 'Admin Panel';
-
-  const handleLogout = () => {
-    logout();
-    router.push('/login');
-  };
 
   const sidebarProps = {
     pathname,
@@ -184,7 +210,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <div className="w-60 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 h-screen shadow-xl">
             <SidebarContent {...sidebarProps} />
           </div>
-          {/* Backdrop */}
           <div
             className="flex-1 bg-black/40 backdrop-blur-sm"
             onClick={() => setDrawerOpen(false)}
@@ -198,7 +223,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {/* Topbar */}
         <header className="sticky top-0 z-40 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center gap-3">
 
-          {/* Hamburger — mobile */}
           <button
             onClick={() => setDrawerOpen(true)}
             className="lg:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
@@ -207,36 +231,26 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <Menu className="w-5 h-5 text-gray-600 dark:text-gray-400" />
           </button>
 
-          {/* Page title */}
           <div className="flex-1">
             <h1 className="font-semibold text-gray-900 dark:text-white text-sm">
               {pageLabel}
             </h1>
           </div>
 
-          {/* User info */}
-          {user && (
-            <div className="flex items-center gap-2.5">
-              {/* Avatar */}
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-400 to-violet-600 flex items-center justify-center text-white text-xs font-bold shadow-sm">
-                {user.name[0].toUpperCase()}
-              </div>
-
-              {/* Name */}
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300 hidden sm:block">
-                {user.name}
-              </span>
-
-              {/* Role badge */}
-              <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400">
-                <Shield className="w-3 h-3" />
-                {user.email === ADMIN_EMAIL && !user.role?.includes('admin') ? 'superadmin' : user.role}
-              </span>
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-400 to-violet-600 flex items-center justify-center text-white text-xs font-bold shadow-sm">
+              {user.name[0].toUpperCase()}
             </div>
-          )}
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300 hidden sm:block">
+              {user.name}
+            </span>
+            <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400">
+              <Shield className="w-3 h-3" />
+              {user.email === ADMIN_EMAIL && !user.role?.includes('admin') ? 'superadmin' : user.role}
+            </span>
+          </div>
         </header>
 
-        {/* Page content */}
         <main className="flex-1 p-4 sm:p-6">
           {children}
         </main>

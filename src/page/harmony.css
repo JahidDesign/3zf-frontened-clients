@@ -1,0 +1,287 @@
+ @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #040f0a;
+    --bg2:      #071510;
+    --gold:     #f0c040;
+    --gold-d:   #c9952a;
+    --gold-g:   rgba(240,192,64,.16);
+    --green:    #0d2318;
+    --green2:   #132d1e;
+    --green3:   #1c3d2a;
+    --text:     #e8f0ec;
+    --muted:    #7a9988;
+    --border:   #1a3626;
+    --r:        16px;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  .ha-root {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+  }
+
+  /* ── NOISE TEXTURE ── */
+  .ha-root::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 0;
+  }
+
+  /* ════ HERO SECTION ════ */
+  .ha-hero {
+    position: relative;
+    overflow: hidden;
+    padding: 80px 27px 70px;
+    border-bottom: 1px solid var(--border);
+  }
+  .ha-hero-grid {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 64px 64px;
+    opacity: .28; pointer-events: none;
+  }
+  .ha-hero-blob {
+    position: absolute; border-radius: 50%; filter: blur(140px); pointer-events: none;
+  }
+  .blob-tl { width: 500px; height: 500px; background: rgba(20,97,64,.18); top: -160px; left: -120px; }
+  .blob-br { width: 400px; height: 400px; background: rgba(240,192,64,.08); bottom: -120px; right: -80px; }
+
+  .ha-hero-inner {
+    position: relative; z-index: 1;
+    max-width: 1280px; margin: 0 auto;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 72px; align-items: center;
+  }
+  @media (max-width: 860px) {
+    .ha-hero-inner { grid-template-columns: 1fr; gap: 48px; }
+    .ha-hero, .ha-philo, .ha-work { padding-left: 20px; padding-right: 20px; }
+  }
+
+  .ha-chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: linear-gradient(135deg, var(--green3), var(--green));
+    border: 1px solid var(--gold-d);
+    border-radius: 999px; padding: 5px 18px;
+    font-size: .72rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--gold); margin-bottom: 26px;
+    animation: fUp .55s ease both;
+  }
+
+  .ha-h1 {
+    font-family: "Open Sans", sans-serif;
+    font-size: clamp(3rem, 6vw, 5.2rem);
+    font-weight: 800; line-height: 1.05; letter-spacing: -.025em;
+    margin-bottom: 24px;
+    animation: fUp .65s .1s ease both;
+  }
+  .ha-h1-gold {
+    display: block;
+    background: linear-gradient(140deg, #f0c040 0%, #fde68a 45%, #ca8a04 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .ha-h1-white { display: block; color: var(--text); }
+
+  .ha-quote {
+    font-size: clamp(.9rem, 1.4vw, 1.05rem);
+    font-style: italic; font-weight: 300;
+    line-height: 1.8; color: var(--muted);
+    border-left: 3px solid var(--gold-d);
+    padding-left: 20px; margin-top: 8px;
+    animation: fUp .65s .2s ease both;
+  }
+
+  /* Card (right side of hero) */
+  .ha-card {
+    background: var(--green2);
+    border: 1px solid var(--border);
+    border-radius: 24px; padding: 36px;
+    animation: fUp .7s .25s ease both;
+    transition: border-color .3s, transform .4s;
+  }
+  .ha-card:hover { border-color: var(--gold-d); transform: rotate(0deg) !important; }
+  .ha-card-title {
+   font-family: "Open Sans", sans-serif;
+    font-size: 1.15rem; font-weight: 700; color: var(--text);
+    display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+  }
+  .ha-card-title svg { color: var(--gold); }
+  .ha-card p { font-size: .95rem; line-height: 1.75; color: var(--muted); }
+
+  /* ════ PHILOSOPHY SECTION ════ */
+  .ha-philo {
+    padding: 66px 23px;
+    border-bottom: 1px solid var(--border);
+  }
+  .ha-section-head { text-align: center; margin-bottom: 54px; }
+  .ha-section-head h2 {
+   font-family: "Open Sans", sans-serif;
+    font-size: clamp(1.8rem, 3.5vw, 2.8rem);
+    font-weight: 800; color: var(--text); margin-bottom: 14px;
+  }
+  .ha-section-head h2 span {
+    background: linear-gradient(140deg, #f0c040, #ca8a04);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .ha-line { width: 64px; height: 3px; background: var(--gold-d); margin: 0 auto; border-radius: 999px; }
+
+  .ha-grid {
+    max-width: 1280px; margin: 0 auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+  }
+
+  .philo-card {
+    background: var(--green2);
+    border: 1px solid var(--border);
+    border-radius: 20px; padding: 32px;
+    transition: border-color .25s, transform .25s, background .25s;
+    cursor: default;
+  }
+  .philo-card:hover {
+    border-color: var(--gold-d);
+    background: var(--green3);
+    transform: translateY(-4px);
+  }
+
+  .philo-icon {
+    width: 52px; height: 52px; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; margin-bottom: 22px;
+    box-shadow: 0 4px 20px rgba(0,0,0,.4);
+    transition: transform .25s;
+  }
+  .philo-card:hover .philo-icon { transform: scale(1.1); }
+
+  .philo-letter {
+   font-family: "Open Sans", sans-serif;
+    font-size: 3.2rem; font-weight: 800;
+    color: var(--border); line-height: 1;
+    display: inline-block; margin-right: 6px; vertical-align: baseline;
+    transition: color .25s;
+  }
+  .philo-card:hover .philo-letter { color: var(--gold-g); }
+
+  .philo-title {
+   font-family: "Open Sans", sans-serif;
+    font-size: 1.1rem; font-weight: 700; color: var(--text);
+    display: inline; vertical-align: baseline;
+  }
+  .philo-bn { font-size: .78rem; font-weight: 600; color: var(--gold-d); margin: 6px 0 12px; }
+  .philo-desc { font-size: .88rem; line-height: 1.7; color: var(--muted); }
+
+  /* ════ WORK SECTION ════ */
+  .ha-work {
+    padding: 96px 32px;
+    border-bottom: 1px solid var(--border);
+  }
+  .ha-work-inner {
+    max-width: 1280px; margin: 0 auto;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center;
+  }
+  @media (max-width: 860px) {
+    .ha-work-inner { grid-template-columns: 1fr; gap: 52px; }
+  }
+
+  .ha-work h2 {
+   font-family: "Open Sans", sans-serif;
+    font-size: clamp(1.8rem, 3.5vw, 2.8rem);
+    font-weight: 800; color: var(--text); margin-bottom: 36px;
+  }
+  .ha-work h2 span {
+    background: linear-gradient(140deg, #f0c040, #ca8a04);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .task-list { display: flex; flex-direction: column; gap: 10px; }
+  .task-item {
+    display: flex; align-items: center; gap: 14px;
+    background: var(--green2); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px 18px;
+    font-size: .95rem; font-weight: 500; color: var(--text);
+    transition: border-color .2s, background .2s, transform .2s;
+  }
+  .task-item:hover { border-color: var(--gold-d); background: var(--green3); transform: translateX(4px); }
+  .task-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--gold); flex-shrink: 0; }
+
+  /* Right promo block */
+  .ha-promo {
+    position: relative;
+    background: linear-gradient(135deg, var(--green3) 0%, #0d3020 100%);
+    border: 1px solid var(--border);
+    border-radius: 28px; padding: 48px;
+    overflow: hidden;
+  }
+  .ha-promo::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at top right, rgba(240,192,64,.08), transparent 70%);
+  }
+  .ha-promo-bg-icon {
+    position: absolute; bottom: -20px; right: -20px;
+    color: var(--border); width: 140px; height: 140px;
+  }
+  .ha-promo h3 {
+   font-family: "Open Sans", sans-serif;
+    font-size: 1.9rem; font-weight: 800;
+    color: var(--text); margin-bottom: 18px;
+    position: relative; z-index: 1;
+  }
+  .ha-promo h3 span {
+    background: linear-gradient(140deg, #f0c040, #ca8a04);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .ha-promo p { font-size: .95rem; line-height: 1.8; color: var(--muted); position: relative; z-index: 1; }
+
+  .ha-promo-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    margin-top: 28px;
+    background: linear-gradient(135deg, #f0c040, #ca8a04);
+    color: #040f0a;
+   font-family: "Open Sans", sans-serif; font-weight: 700;
+    font-size: .88rem; letter-spacing: .04em;
+    padding: 12px 26px; border-radius: var(--r);
+    border: none; cursor: pointer;
+    box-shadow: 0 0 28px rgba(240,192,64,.3);
+    transition: transform .2s, box-shadow .2s;
+    position: relative; z-index: 1;
+  }
+  .ha-promo-btn:hover { transform: translateY(-2px); box-shadow: 0 0 44px rgba(240,192,64,.5); }
+
+  /* Outline accent behind promo */
+  .ha-promo-outline {
+    position: absolute; bottom: -12px; right: -12px;
+    width: 100%; height: 100%;
+    border: 1px solid var(--border);
+    border-radius: 28px; pointer-events: none;
+  }
+
+  /* ════ FOOTER ════ */
+  .ha-footer {
+    padding: 32px;
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    text-align: center;
+  }
+  .ha-footer-brand {
+    display: flex; align-items: center; gap: 8px;
+   font-family: "Open Sans", sans-serif;
+    font-size: .72rem; font-weight: 700;
+    letter-spacing: .16em; text-transform: uppercase;
+    color: var(--gold-d);
+  }
+  .ha-footer p { font-size: .78rem; color: var(--muted); }
+
+  /* Animations */
+  @keyframes fUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }

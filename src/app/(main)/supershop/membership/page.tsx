@@ -6,7 +6,7 @@ import { useForm } from 'react-hook-form';
 import api from '@/lib/axios';
 import MainNavbar from '@/components/layout/Navbar';
 import MainFooter from '@/components/layout/Footer';
-import { useAuthStore } from '@/store/auth.store';
+import  useAuthStore  from '@/store/authStore';
 import toast from 'react-hot-toast';
 import {
   ShoppingBag,

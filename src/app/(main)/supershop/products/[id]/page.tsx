@@ -8,7 +8,7 @@ import api from '@/lib/axios';
 import  MainNavbar  from '@/components/layout/Navbar';
 import  MainFooter  from '@/components/layout/Footer';
 import { useCartStore } from '@/store/cart.store';
-import { useAuthStore } from '@/store/auth.store';
+import  useAuthStore  from '@/store/authStore';
 import { Star, ShoppingCart, Heart, ArrowLeft, Plus, Minus, Truck, Shield, RotateCcw } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';

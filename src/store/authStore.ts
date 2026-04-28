@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import api from '@/lib/api';
+import api, { saveTokens, clearTokens, getAccessToken } from '@/lib/api';
 
 interface User {
   _id: string;
@@ -20,78 +20,94 @@ interface User {
 }
 
 interface AuthState {
-  user: User | null;
-  accessToken: string | null;
-  refreshToken: string | null;
-  isLoading: boolean;
+  user:            User | null;
+  accessToken:     string | null;
+  refreshToken:    string | null;
+  isLoading:       boolean;
   isAuthenticated: boolean;
-  setAuth: (user: User, accessToken: string, refreshToken: string) => void;
-  setUser: (user: User) => void;
-  logout: () => Promise<void>;
-  refreshAccessToken: () => Promise<boolean>;
-  fetchMe: () => Promise<void>;
+  isHydrated:      boolean;
+  setAuth:   (user: User, accessToken: string, refreshToken: string) => void;
+  setUser:   (updates: Partial<User>) => void;
+  logout:    () => Promise<void>;
+  fetchMe:   () => Promise<void>;
 }
+
+// ─── IMPORTANT: this key must match STORAGE_KEY in axios.ts ──────────────────
+const STORAGE_KEY = '3zf-auth';
 
 const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
-      user: null,
-      accessToken: null,
-      refreshToken: null,
-      isLoading: false,
+      user:            null,
+      accessToken:     null,
+      refreshToken:    null,
+      isLoading:       false,
       isAuthenticated: false,
+      isHydrated:      false,
 
       setAuth: (user, accessToken, refreshToken) => {
+        // saveTokens: writes cookies + patches localStorage + sets axios header
+        saveTokens(accessToken, refreshToken);
         set({ user, accessToken, refreshToken, isAuthenticated: true });
-        api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
       },
 
-      setUser: (user) => set({ user }),
+      setUser: (updates) =>
+        set((s) => ({
+          user: s.user ? { ...s.user, ...updates } : s.user,
+        })),
 
       logout: async () => {
         try { await api.post('/auth/logout'); } catch {}
-        set({ user: null, accessToken: null, refreshToken: null, isAuthenticated: false });
-        delete api.defaults.headers.common['Authorization'];
+
+        // clearTokens: removes cookies + clears localStorage + removes axios header
+        clearTokens();
+
+        // Reset Zustand state — this overwrites the persisted state on next write
+        set({
+          user:            null,
+          accessToken:     null,
+          refreshToken:    null,
+          isAuthenticated: false,
+        });
+
         window.location.href = '/';
       },
 
-      refreshAccessToken: async () => {
-        const { refreshToken } = get();
-        if (!refreshToken) return false;
-        try {
-          const { data } = await api.post('/auth/refresh-token', { refreshToken });
-          set({ accessToken: data.accessToken, refreshToken: data.refreshToken });
-          api.defaults.headers.common['Authorization'] = `Bearer ${data.accessToken}`;
-          return true;
-        } catch {
-          set({ user: null, accessToken: null, refreshToken: null, isAuthenticated: false });
-          return false;
-        }
-      },
-
       fetchMe: async () => {
-        const { accessToken } = get();
-        if (!accessToken) return;
+        const token = getAccessToken();
+        if (!token) return;
+
         set({ isLoading: true });
         try {
-          api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
           const { data } = await api.get('/auth/me');
           set({ user: data.user, isAuthenticated: true });
         } catch {
-          set({ isAuthenticated: false });
+          // Interceptor already tried refresh + retry — if still failing, clear auth
+          set({ user: null, accessToken: null, refreshToken: null, isAuthenticated: false });
+          clearTokens();
         } finally {
           set({ isLoading: false });
         }
       },
     }),
     {
-      name: '3zf-auth',
+      name: STORAGE_KEY, // matches axios.ts STORAGE_KEY — single source of truth
       partialize: (state) => ({
-        user: state.user,
-        accessToken: state.accessToken,
-        refreshToken: state.refreshToken,
+        user:            state.user,
+        accessToken:     state.accessToken,
+        refreshToken:    state.refreshToken,
         isAuthenticated: state.isAuthenticated,
       }),
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          state.isHydrated = true;
+          // Restore axios header on page reload
+          if (state.accessToken) {
+            api.defaults.headers.common['Authorization'] =
+              `Bearer ${state.accessToken}`;
+          }
+        }
+      },
     }
   )
 );

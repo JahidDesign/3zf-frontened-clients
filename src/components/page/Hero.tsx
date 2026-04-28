@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { ArrowRight, Wheat, Home, BookOpen } from 'lucide-react';
+import { ArrowRight, Wheat, Home, BookOpen, Link } from 'lucide-react';
 
 function LogoEmblem({ size = 96 }) {
   const ticks = [0, 60, 120, 180, 240, 300];
@@ -93,9 +93,8 @@ export default function Hero() {
 
             {/* Description */}
             <p className="text-sm leading-relaxed mb-8 max-w-lg" style={{ color: 'var(--color-text-secondary)' }}>
-              3ZF is a justice-driven economic and social movement built on three transformative
-              principles. Together, we work towards financial freedom, social dignity, and
-              knowledge-based empowerment for all.
+                3ZF is a justice-driven economic and social movement built on three transformative principles — Zero Interest, Zero Exploitation, and Zero Ignorance.
+                Together, we work towards financial freedom, social dignity, and knowledge-based empowerment for all.
             </p>
 
             {/* Pillars */}
@@ -121,9 +120,12 @@ export default function Hero() {
 
             {/* CTA Buttons */}
             <div className="flex flex-col sm:flex-row gap-3 mb-8">
+              
               <button className="btn-primary text-sm px-7 py-3 flex items-center justify-center gap-2">
+               
                 Join the Movement <ArrowRight className="w-4 h-4" />
               </button>
+             
               <button className="btn-secondary text-sm px-7 py-3">
                 Learn More
               </button>

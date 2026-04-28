@@ -19,13 +19,55 @@ const ICON_COLORS = [
 ];
 
 const philosophies = [
-  { letter: "H", title: "Humanity Aid",       bn: "মানবিক সহায়তা",         desc: "দুর্বল, অসহায় ও বিপদগ্রস্ত মানুষের পাশে উপকরণ ও মানসিক সমর্থনে দাঁড়ানো।",       icon: Heart,       num: "01" },
-  { letter: "A", title: "Awareness",           bn: "সামাজিক সচেতনতা",        desc: "নৈতিকতা, শিক্ষা, স্বাস্থ্য ও অধিকার সম্পর্কে সচেতনতা বৃদ্ধি।",                   icon: Lightbulb,   num: "02" },
-  { letter: "R", title: "Relief",              bn: "দুর্যোগকালীন ত্রাণ",     desc: "বন্যা, শীত বা যেকোনো দুর্যোগে সবার আগে মানুষের কাছে পৌঁছে যাওয়া।",             icon: CloudRain,   num: "03" },
-  { letter: "M", title: "Mutual Cooperation",  bn: "প্রবাসী সহযোগিতা",       desc: "প্রবাসীদের পারিবারিক সাপোর্ট, প্রতারণা প্রতিরোধ ও মানবিক সহায়তা।",             icon: Globe,       num: "04" },
-  { letter: "O", title: "Oxygen for Nature",   bn: "পরিবেশ রক্ষা",           desc: "বৃক্ষরোপণ ও প্লাস্টিকমুক্ত ক্যাম্পেইনের মাধ্যমে প্রকৃতি সুরক্ষা।",             icon: Leaf,        num: "05" },
-  { letter: "N", title: "Nurturing",           bn: "টেকসই উন্নয়ন",          desc: "কর্মসংস্থান সৃষ্টি ও যুবদের দক্ষতা উন্নয়নের মাধ্যমে স্বাবলম্বী করা।",           icon: TrendingUp,  num: "06" },
-  { letter: "Y", title: "Yearning",            bn: "সুন্দর আগামীর আকাঙ্ক্ষা", desc: "ন্যায় ও সম্প্রীতিকে কেন্দ্র করে একটি উন্নত বাংলাদেশের স্বপ্ন।",               icon: Sun,         num: "07" },
+  {
+    letter: "H",
+    title: "Humanity Aid",
+    bnTitle: "মানবিক সহায়তা",
+    description: "দুর্বল, অসহায় ও বিপদগ্রস্ত মানুষের পাশে উপকরণ ও মানসিক সমর্থনে দাঁড়ানো।",
+    icon: Heart,
+  },
+  {
+    letter: "A",
+    title: "Awareness",
+    bnTitle: "সামাজিক সচেতনতা",
+    description: "নৈতিকতা, শিক্ষা, স্বাস্থ্য ও অধিকার সম্পর্কে সচেতনতা বৃদ্ধি।",
+    icon: Lightbulb,
+  },
+  {
+    letter: "R",
+    title: "Relief",
+    bnTitle: "দুর্যোগকালীন ত্রাণ",
+    description: "বন্যা, শীত বা যেকোনো দুর্যোগে সবার আগে মানুষের কাছে পৌঁছে যাওয়া।",
+    icon: CloudRain,
+  },
+  {
+    letter: "M",
+    title: "Mutual Cooperation",
+    bnTitle: "প্রবাসী সহযোগিতা",
+    description: "প্রবাসীদের পারিবারিক সাপোর্ট, প্রতারণা প্রতিরোধ ও মানবিক সহায়তা।",
+    icon: Globe,
+  },
+  {
+    letter: "O",
+    title: "Oxygen for Nature",
+    bnTitle: "পরিবেশ রক্ষা",
+    description: "বৃক্ষরোপণ ও প্লাস্টিকমুক্ত ক্যাম্পেইনের মাধ্যমে প্রকৃতি সুরক্ষা।",
+    icon: Leaf,
+  },
+  {
+    letter: "N",
+    title: "Nurturing",
+    bnTitle: "টেকসই উন্নয়ন",
+    description: "কর্মসংস্থান সৃষ্টি ও যুবদের দক্ষতা উন্নয়নের মাধ্যমে স্বাবলম্বী করা।",
+    icon: TrendingUp,
+  },
+  {
+    letter: "Y",
+    title: "Yearning",
+    bnTitle: "সুন্দর আগামীর আকাঙ্ক্ষা",
+    description: "ন্যায় ও সম্প্রীতিকে কেন্দ্র করে একটি উন্নত বাংলাদেশের স্বপ্ন।",
+    icon: Sun,
+  },
 ];
 
 const tasks = [
@@ -38,9 +80,9 @@ const tasks = [
 ];
 
 const stats = [
-  { value: "৭টি",  label: "মূল দর্শন" },
-  { value: "৬টি",  label: "কাজের ধারা" },
-  { value: "৬৪",   label: "জেলা লক্ষ্য" },
+  { value: "৭টি", label: "মূল দর্শন" },
+  { value: "৬টি", label: "কাজের ধারা" },
+  { value: "৬৪",  label: "জেলা লক্ষ্য" },
 ];
 
 const badges = [
@@ -81,18 +123,23 @@ export default function HarmonyAbout() {
             transition={{ duration: 0.6 }}
           >
             {/* Chip */}
-            <div className="inline-flex items-center gap-1.5 mb-4 px-3 py-1 rounded-full text-xs font-semibold tracking-wide border"
+            <div
+              className="inline-flex items-center gap-1.5 mb-4 px-3 py-1 rounded-full text-xs font-semibold tracking-wide border"
               style={{
                 background: "rgba(124,58,237,0.08)",
                 borderColor: "rgba(124,58,237,0.25)",
                 color: "var(--color-brand)",
-              }}>
+              }}
+            >
               <Zap className="w-3 h-3" />
               HARMONY অর্থ সম্প্রীতি
             </div>
 
             {/* Heading */}
-            <h1 className="font-heading font-bold leading-[1.05] mb-3" style={{ color: "var(--color-text)" }}>
+            <h1
+              className="font-heading font-bold leading-[1.05] mb-3"
+              style={{ color: "var(--color-text)" }}
+            >
               <span className="block text-6xl md:text-8xl bg-gradient-to-r from-violet-600 to-purple-500 bg-clip-text text-transparent">
                 HARMONY
               </span>
@@ -101,7 +148,10 @@ export default function HarmonyAbout() {
               </span>
             </h1>
 
-            <p className="text-sm tracking-widest mb-5" style={{ color: "var(--color-text-secondary)" }}>
+            <p
+              className="text-sm tracking-widest mb-5"
+              style={{ color: "var(--color-text-secondary)" }}
+            >
               সম্প্রীতি · সেবা · পরিবর্তন
             </p>
 
@@ -111,7 +161,10 @@ export default function HarmonyAbout() {
             {/* Quote */}
             <blockquote
               className="italic text-sm leading-relaxed mb-8 pl-3 border-l-2"
-              style={{ color: "var(--color-text-secondary)", borderColor: "var(--color-brand-light, #a78bfa)" }}
+              style={{
+                color: "var(--color-text-secondary)",
+                borderColor: "var(--color-brand-light, #a78bfa)",
+              }}
             >
               একজন মানুষ পরিবর্তিত হলে, একটি পরিবার বদলায়।
               একটি পরিবার বদলালে, একটি সমাজ বদলায়।
@@ -138,11 +191,17 @@ export default function HarmonyAbout() {
           >
             {/* Info card */}
             <div className="card p-5">
-              <div className="flex items-center gap-2 mb-3 text-sm font-semibold" style={{ color: "var(--color-brand)" }}>
+              <div
+                className="flex items-center gap-2 mb-3 text-sm font-semibold"
+                style={{ color: "var(--color-brand)" }}
+              >
                 <ShieldCheck className="w-4 h-4" />
                 3ZF-এর মাঠপর্যায়ের প্ল্যাটফর্ম
               </div>
-              <p className="text-sm leading-relaxed mb-5" style={{ color: "var(--color-text-secondary)" }}>
+              <p
+                className="text-sm leading-relaxed mb-5"
+                style={{ color: "var(--color-text-secondary)" }}
+              >
                 3ZF দর্শন পথ দেখায় — আর Harmony মানুষের জীবনে সেই পরিবর্তন বাস্তবে রূপ দেয়।
                 এটি একটি মানবিক আন্দোলন এবং সমাজ পরিবর্তনের প্রতিজ্ঞা।
               </p>
@@ -150,8 +209,18 @@ export default function HarmonyAbout() {
               <div className="flex flex-wrap gap-x-6 gap-y-3">
                 {stats.map((s, i) => (
                   <div key={i} className="flex flex-col">
-                    <span className="font-heading text-xl font-bold" style={{ color: "var(--color-brand)" }}>{s.value}</span>
-                    <span className="text-xs" style={{ color: "var(--color-text-secondary)" }}>{s.label}</span>
+                    <span
+                      className="font-heading text-xl font-bold"
+                      style={{ color: "var(--color-brand)" }}
+                    >
+                      {s.value}
+                    </span>
+                    <span
+                      className="text-xs"
+                      style={{ color: "var(--color-text-secondary)" }}
+                    >
+                      {s.label}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -160,9 +229,20 @@ export default function HarmonyAbout() {
             {/* Trust badges */}
             <div className="grid grid-cols-2 gap-3">
               {badges.map((b) => (
-                <div key={b.label} className="card flex items-center gap-2.5 py-2.5 px-3">
-                  <b.icon className="w-4 h-4 flex-shrink-0" style={{ color: "var(--color-brand)" }} />
-                  <span className="text-xs font-medium" style={{ color: "var(--color-text-secondary)" }}>{b.label}</span>
+                <div
+                  key={b.label}
+                  className="card flex items-center gap-2.5 py-2.5 px-3"
+                >
+                  <b.icon
+                    className="w-4 h-4 flex-shrink-0"
+                    style={{ color: "var(--color-brand)" }}
+                  />
+                  <span
+                    className="text-xs font-medium"
+                    style={{ color: "var(--color-text-secondary)" }}
+                  >
+                    {b.label}
+                  </span>
                 </div>
               ))}
             </div>
@@ -176,34 +256,69 @@ export default function HarmonyAbout() {
           transition={{ duration: 0.5, delay: 0.2 }}
           className="mb-20"
         >
-          <h2 className="font-heading text-2xl font-bold mb-2" style={{ color: "var(--color-text)" }}>
-            HARMONY-এর <span style={{ color: "var(--color-brand)" }}>৭টি মূল দর্শন</span>
+          <h2
+            className="font-heading text-2xl font-bold mb-2"
+            style={{ color: "var(--color-text)" }}
+          >
+            HARMONY-এর{" "}
+            <span style={{ color: "var(--color-brand)" }}>৭টি মূল দর্শন</span>
           </h2>
           <div className="w-10 h-0.5 rounded-full mb-8 bg-gradient-to-r from-violet-600 to-transparent" />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {philosophies.map((p, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 + i * 0.07 }}
-                className="card flex flex-col gap-2 py-4 px-4 hover:-translate-y-0.5 transition-all duration-200 cursor-default"
-              >
-                <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${ICON_COLORS[i]} flex items-center justify-center flex-shrink-0`}>
-                  <p.icon className="w-4 h-4 text-white" />
-                </div>
-                <div>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-xl font-bold" style={{ color: "var(--color-brand)" }}>{p.letter}</span>
-                    <span className="text-sm font-semibold" style={{ color: "var(--color-text)" }}>{p.title}</span>
+            {philosophies.map((p, i) => {
+              const Icon = p.icon;
+              return (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 + i * 0.07 }}
+                  className="card flex flex-col gap-2 py-4 px-4 hover:-translate-y-0.5 transition-all duration-200 cursor-default"
+                >
+                  {/* Icon */}
+                  <div
+                    className={`w-9 h-9 rounded-xl bg-gradient-to-br ${ICON_COLORS[i]} flex items-center justify-center flex-shrink-0`}
+                  >
+                    <Icon size={18} className="text-white" />
                   </div>
-                  <p className="text-xs mt-0.5" style={{ color: "var(--color-brand-light, #a78bfa)" }}>{p.bn}</p>
-                </div>
-                <p className="text-xs leading-relaxed" style={{ color: "var(--color-text-secondary)" }}>{p.desc}</p>
-                <span className="text-xs font-bold tabular-nums mt-auto" style={{ color: "var(--color-text-secondary)" }}>{p.num}</span>
-              </motion.div>
-            ))}
+
+                  {/* Title row */}
+                  <div>
+                    <div className="flex items-baseline gap-2">
+                      <span
+                        className="text-xl font-bold"
+                        style={{ color: "var(--color-brand)" }}
+                      >
+                        {p.letter}
+                      </span>
+                      <span
+                        className="text-sm font-semibold"
+                        style={{ color: "var(--color-text)" }}
+                      >
+                        {p.title}
+                      </span>
+                    </div>
+                    {/* Fixed: was p.bn → p.bnTitle */}
+                    <p
+                      className="text-xs mt-0.5"
+                      style={{ color: "var(--color-brand-light, #a78bfa)" }}
+                    >
+                      {p.bnTitle}
+                    </p>
+                  </div>
+
+                  {/* Fixed: was p.desc → p.description */}
+                  <p
+                    className="text-xs leading-relaxed"
+                    style={{ color: "var(--color-text-secondary)" }}
+                  >
+                    {p.description}
+                  </p>
+                  {/* Removed: p.num (was never defined in the data) */}
+                </motion.div>
+              );
+            })}
           </div>
         </motion.div>
 
@@ -213,8 +328,12 @@ export default function HarmonyAbout() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.3 }}
         >
-          <h2 className="font-heading text-2xl font-bold mb-2" style={{ color: "var(--color-text)" }}>
-            Harmony <span style={{ color: "var(--color-brand)" }}>কীভাবে কাজ করে?</span>
+          <h2
+            className="font-heading text-2xl font-bold mb-2"
+            style={{ color: "var(--color-text)" }}
+          >
+            Harmony{" "}
+            <span style={{ color: "var(--color-brand)" }}>কীভাবে কাজ করে?</span>
           </h2>
           <div className="w-10 h-0.5 rounded-full mb-8 bg-gradient-to-r from-violet-600 to-transparent" />
 
@@ -230,8 +349,13 @@ export default function HarmonyAbout() {
                   transition={{ delay: 0.35 + i * 0.07 }}
                   className="card flex items-center gap-3 py-3 px-4"
                 >
-                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: "var(--color-brand)" }} />
-                  <span className="text-sm" style={{ color: "var(--color-text)" }}>{t}</span>
+                  <div
+                    className="w-2 h-2 rounded-full flex-shrink-0"
+                    style={{ background: "var(--color-brand)" }}
+                  />
+                  <span className="text-sm" style={{ color: "var(--color-text)" }}>
+                    {t}
+                  </span>
                 </motion.div>
               ))}
             </div>
@@ -239,7 +363,10 @@ export default function HarmonyAbout() {
             {/* Promo card */}
             <div
               className="card relative overflow-hidden p-6"
-              style={{ background: "rgba(124,58,237,0.06)", borderColor: "rgba(124,58,237,0.2)" }}
+              style={{
+                background: "rgba(124,58,237,0.06)",
+                borderColor: "rgba(124,58,237,0.2)",
+              }}
             >
               {/* BG icon */}
               <Users
@@ -247,10 +374,19 @@ export default function HarmonyAbout() {
                 style={{ width: 120, height: 120, color: "var(--color-brand)" }}
               />
 
-              <h3 className="text-lg font-bold mb-3" style={{ color: "var(--color-text)" }}>
-                <span style={{ color: "var(--color-brand)" }}>সম্প্রীতি + সেবা</span> = পরিবর্তন
+              <h3
+                className="text-lg font-bold mb-3"
+                style={{ color: "var(--color-text)" }}
+              >
+                <span style={{ color: "var(--color-brand)" }}>
+                  সম্প্রীতি + সেবা
+                </span>{" "}
+                = পরিবর্তন
               </h3>
-              <p className="text-sm leading-relaxed mb-5" style={{ color: "var(--color-text-secondary)" }}>
+              <p
+                className="text-sm leading-relaxed mb-5"
+                style={{ color: "var(--color-text-secondary)" }}
+              >
                 প্রতিটি মানুষকে আত্মনির্ভর করে তোলাই Harmony-এর অঙ্গীকার।
                 আমরা বিশ্বাস করি — ঐক্য ও সম্প্রীতির সম্মিলিত শক্তিই পারে
                 একটি সমাজকে টেকসই অগ্রগতির পথে নিয়ে যেতে।

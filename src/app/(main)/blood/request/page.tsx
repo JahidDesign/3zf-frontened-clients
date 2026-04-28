@@ -34,7 +34,7 @@ export default function CreateBloodRequestPage() {
   });
 
   const mutation = useMutation({
-    mutationFn: (data: FormData) => api.post('/blood/request', data),
+    mutationFn: (data: FormData) => api.post('/blood/requests', data),
     onSuccess: () => setDone(true),
     onError: (e: any) => toast.error(e.response?.data?.message || 'Failed to submit'),
   });

@@ -34,7 +34,7 @@ export default function LoginPage() {
       if (res.data.success) {
         setAuth(res.data.user, res.data.accessToken, res.data.refreshToken);
         toast.success(t.auth.welcomeBack);
-        router.push('/community');
+        router.push('/');
       }
     } catch (err: any) {
       toast.error(err.response?.data?.message || t.common.error);
@@ -72,7 +72,7 @@ export default function LoginPage() {
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>{t.auth.password}</label>
-                <Link href="/forgot-password" className="text-xs font-medium" style={{ color: 'var(--color-brand)' }}>{t.auth.forgotPassword}</Link>
+                <Link href="/password" className="text-xs font-medium" style={{ color: 'var(--color-brand)' }}>{t.auth.forgotPassword}</Link>
               </div>
               <div className="relative">
                 <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: 'var(--color-text-muted)' }} />

@@ -4,7 +4,6 @@ import React from "react";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
-  ChevronRight,
   Quote,
   Star,
   Zap,
@@ -17,16 +16,25 @@ import {
 
 /* ── data ── */
 const milestones = [
-  { year: "২০১৮", label: "3ZF দর্শনের সূচনা",          icon: Sparkles },
-  { year: "২০২০", label: "Harmony-এর যাত্রা শুরু",      icon: Globe2   },
-  { year: "২০২২", label: "৬৪ জেলায় বিস্তার পরিকল্পনা", icon: Users    },
-  { year: "২০২৪", label: "জ্ঞান ও উদ্যোক্তা কার্যক্রম", icon: BookOpen },
+  { year: "২০২৫", label: "3ZF দর্শনের সূচনা",          icon: Sparkles },
+  { year: "২০২৬", label: "Harmony-এর যাত্রা শুরু",      icon: Globe2   },
+  { year: "২০২৭", label: "৬৪ জেলায় বিস্তার পরিকল্পনা", icon: Users    },
+  { year: "২০২৮", label: "জ্ঞান ও উদ্যোক্তা কার্যক্রম", icon: BookOpen },
 ];
 
 const values = [
-  { title: "সুদমুক্ত অর্থনীতি",    desc: "ন্যায়ভিত্তিক আর্থিক ব্যবস্থার মাধ্যমে শোষণমুক্ত সমাজ।" },
-  { title: "শোষণমুক্ত সমাজ",       desc: "মানুষের মর্যাদা ও অধিকার নিশ্চিত করা।"                  },
-  { title: "অজ্ঞতামুক্ত জনগোষ্ঠী", desc: "জ্ঞান ও দক্ষতায় আলোকিত প্রজন্ম গড়ে তোলা।"            },
+  {
+    title: "সুদমুক্ত অর্থনীতি",
+    desc:  "ন্যায়ভিত্তিক আর্থিক ব্যবস্থার মাধ্যমে শোষণমুক্ত সমাজ।",
+  },
+  {
+    title: "শোষণমুক্ত সমাজ",
+    desc:  "মানুষের মর্যাদা ও অধিকার নিশ্চিত করা।",
+  },
+  {
+    title: "অজ্ঞতামুক্ত জনগোষ্ঠী",
+    desc:  "জ্ঞান ও দক্ষতায় আলোকিত প্রজন্ম গড়ে তোলা।",
+  },
 ];
 
 const badges = [
@@ -36,98 +44,75 @@ const badges = [
   { icon: Users,       label: "কমিউনিটি-কেন্দ্রিক" },
 ];
 
-/* ── helpers ── */
-const fluid = (min: string, mid: string, max: string) =>
-  `clamp(${min}, ${mid}, ${max})`;
+const quoteParas = [
+  <>
+    প্রকৃত স্বাধীনতা তখনই প্রতিষ্ঠিত হয়, যখন সমাজ হয় সুদমুক্ত, শোষণমুক্ত এবং
+    অজ্ঞতামুক্ত। এই বিশ্বাস ও উপলব্ধি থেকেই{" "}
+    <span style={{ color: "var(--color-brand)", fontWeight: 600 }}>
+      Three Zeros of Freedom (3ZF)
+    </span>{" "}
+    ধারণার সূচনা।
+  </>,
+  <>
+    3ZF এমন একটি সমাজের স্বপ্ন দেখে, যেখানে অর্থনীতি হবে ন্যায়ভিত্তিক, মানুষ হবে
+    মর্যাদাপূর্ণ জীবনের অধিকারী, এবং জ্ঞান হবে উন্নতির প্রধান শক্তি।
+  </>,
+  <>
+    এই লক্ষ্য বাস্তবায়নের জন্য 3ZF শুধু একটি ধারণা নয়, বরং একটি সচেতন সামাজিক
+    উদ্যোগ — যার উদ্দেশ্য একটি ন্যায্য, মানবিক ও জ্ঞানসমৃদ্ধ সমাজ গড়ে তোলা।
+  </>,
+];
 
-/* ── component ── */
+/* ── Framer variants ── */
+const fadeUp = (delay = 0) => ({
+  initial:    { opacity: 0, y: 22 },
+  animate:    { opacity: 1, y: 0  },
+  transition: { duration: 0.55, delay, ease: [0.22, 1, 0.36, 1] },
+});
+
+const fadeX = (dir: number, delay = 0) => ({
+  initial:    { opacity: 0, x: dir * 28 },
+  animate:    { opacity: 1, x: 0         },
+  transition: { duration: 0.6, delay, ease: [0.22, 1, 0.36, 1] },
+});
+
+/* ═══════════════════════════════════════════════ */
 export default function FounderPage() {
   return (
     <section
-      className="relative overflow-hidden min-h-screen"
+      className="founder-section"
       style={{
-        background: "var(--color-bg-secondary)",
-        paddingTop:    fluid("3.5rem", "8vw",  "5rem"),
-        paddingBottom: fluid("2.5rem", "6vw",  "4rem"),
-        paddingLeft:   fluid("1rem",   "4vw",  "1.5rem"),
-        paddingRight:  fluid("1rem",   "4vw",  "1.5rem"),
+        position:     "relative",
+        overflow:     "hidden",
+        minHeight:    "100dvh",
+        background:   "var(--color-bg-secondary)",
+        padding:      "clamp(3.5rem,8vw,5.5rem) clamp(1rem,5vw,2.5rem) clamp(2.5rem,6vw,4.5rem)",
       }}
     >
-      {/* ── Brand overlay ── */}
-      <div className="absolute inset-0 gradient-brand opacity-[0.04] pointer-events-none" />
+      {/* ── decorative layers ── */}
+      <div className="deco-gradient" />
+      <div className="deco-grid"     />
+      <div className="deco-orb"      />
 
-      {/* ── Dot-grid bg ── */}
-      <div
-        className="absolute inset-0 pointer-events-none opacity-[0.03]"
-        style={{
-          backgroundImage:
-            "linear-gradient(var(--color-brand) 1px, transparent 1px)," +
-            "linear-gradient(90deg, var(--color-brand) 1px, transparent 1px)",
-          backgroundSize: `${fluid("36px", "6vw", "56px")} ${fluid("36px", "6vw", "56px")}`,
-        }}
-      />
-
-      {/* ── Accent orb (hidden on xs) ── */}
-      <div
-        className="absolute hidden sm:block rounded-full pointer-events-none blur-3xl opacity-[0.07]"
-        style={{
-          background: "var(--color-brand)",
-          width:  fluid("180px", "38vw", "360px"),
-          height: fluid("180px", "38vw", "360px"),
-          top:    "8rem",
-          right:  "-3rem",
-        }}
-      />
-
-      {/* ═══════════════════════════════════════
+      {/* ════════════════════════════════════
           CONTENT WRAPPER
-      ═══════════════════════════════════════ */}
-      <div className="relative mx-auto w-full" style={{ maxWidth: "72rem" }}>
+      ════════════════════════════════════ */}
+      <div style={{ position: "relative", maxWidth: "75rem", margin: "0 auto", width: "100%" }}>
 
-        {/* ════════════════════════════
-            HERO GRID
-        ════════════════════════════ */}
-        <div
-          className="grid grid-cols-1 lg:grid-cols-2 items-center"
-          style={{
-            gap:          fluid("2rem", "5vw", "4rem"),
-            marginBottom: fluid("2.5rem", "7vw", "5rem"),
-          }}
-        >
+        {/* ── HERO GRID ── */}
+        <div className="hero-grid">
 
-          {/* ── LEFT: portrait ── */}
-          <motion.div
-            initial={{ opacity: 0, x: -24 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6 }}
-            className="flex flex-col items-center lg:items-start"
-            style={{ gap: fluid("1rem", "3vw", "1.5rem") }}
-          >
-            {/* Avatar wrapper */}
-            <div className="relative flex-shrink-0">
-              {/* Glow */}
-              <div
-                className="absolute inset-0 rounded-full blur-2xl opacity-25"
-                style={{ background: "var(--color-brand)", transform: "scale(1.2)" }}
-              />
-              {/* Dashed ring */}
-              <div
-                className="absolute rounded-full border-2 border-dashed opacity-20"
-                style={{ borderColor: "var(--color-brand)", inset: "-8px" }}
-              />
-              {/* Photo */}
-              <div
-                className="relative rounded-full overflow-hidden border-4"
-                style={{
-                  borderColor: "var(--color-brand)",
-                  width:  fluid("108px", "22vw", "192px"),
-                  height: fluid("108px", "22vw", "192px"),
-                }}
-              >
+          {/* LEFT — portrait */}
+          <motion.div {...fadeX(-1, 0)} className="portrait-col">
+            {/* Avatar */}
+            <div style={{ position: "relative", flexShrink: 0 }}>
+              <div className="avatar-glow" />
+              <div className="avatar-ring" />
+              <div className="avatar-frame">
                 <img
                   src="/team/ceo.png"
                   alt="Md. Asaduzzaman Sujon"
-                  className="w-full h-full object-cover"
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
                   onError={(e) => {
                     (e.target as HTMLImageElement).src =
                       "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%237c3aed' width='100' height='100'/%3E%3Ctext x='50' y='62' text-anchor='middle' font-size='38' fill='white' font-family='serif'%3EAS%3C/text%3E%3C/svg%3E";
@@ -137,397 +122,471 @@ export default function FounderPage() {
             </div>
 
             {/* Name block */}
-            <div className="text-center lg:text-left">
-              <h2
-                className="font-heading font-bold mb-1"
-                style={{
-                  color:    "var(--color-text)",
-                  fontSize: fluid("1rem", "3.2vw", "1.5rem"),
-                }}
-              >
-                Md. Asaduzzaman Sujon
-              </h2>
-              <p
-                className="tracking-widest mb-1"
-                style={{
-                  color:    "var(--color-brand)",
-                  fontSize: fluid("0.65rem", "1.8vw", "0.85rem"),
-                }}
-              >
-                প্রতিষ্ঠাতা ও পরিচালক
-              </p>
-              <p style={{ color: "var(--color-text-secondary)", fontSize: fluid("0.6rem", "1.5vw", "0.72rem") }}>
+            <div style={{ textAlign: "center" }} className="name-block">
+              <h2 className="founder-name">Md. Asaduzzaman Sujon</h2>
+              <p className="founder-role">প্রতিষ্ঠাতা ও পরিচালক</p>
+              <p className="founder-org">
                 Three Zeros of Freedom (3ZF) · Harmony Organization
               </p>
             </div>
 
-            {/* Badges 2-col */}
-            <div
-              className="grid grid-cols-2 w-full"
-              style={{
-                gap:      fluid("0.5rem", "2vw", "0.75rem"),
-                maxWidth: "min(100%, 20rem)",
-              }}
-            >
+            {/* Badges */}
+            <div className="badges-grid">
               {badges.map((b) => (
-                <div
-                  key={b.label}
-                  className="card flex items-center"
-                  style={{
-                    gap:     fluid("6px", "1.5vw", "10px"),
-                    padding: `${fluid("7px", "1.8vw", "10px")} ${fluid("8px", "2vw", "12px")}`,
-                  }}
-                >
-                  <b.icon
-                    style={{
-                      color:      "var(--color-brand)",
-                      width:      fluid("13px", "2.8vw", "16px"),
-                      height:     fluid("13px", "2.8vw", "16px"),
-                      flexShrink: 0,
-                    }}
-                  />
-                  <span
-                    className="font-medium leading-tight"
-                    style={{
-                      color:    "var(--color-text-secondary)",
-                      fontSize: fluid("0.6rem", "1.5vw", "0.72rem"),
-                    }}
-                  >
-                    {b.label}
-                  </span>
+                <div key={b.label} className="badge-card">
+                  <b.icon className="badge-icon" />
+                  <span className="badge-label">{b.label}</span>
                 </div>
               ))}
             </div>
           </motion.div>
 
-          {/* ── RIGHT: message ── */}
-          <motion.div
-            initial={{ opacity: 0, x: 24 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6, delay: 0.15 }}
-            className="flex flex-col"
-            style={{ gap: fluid("0.9rem", "2.5vw", "1.25rem") }}
-          >
+          {/* RIGHT — message */}
+          <motion.div {...fadeX(1, 0.15)} className="message-col">
             {/* Chip */}
-            <div
-              className="inline-flex items-center w-fit rounded-full font-semibold tracking-wide border"
-              style={{
-                background:  "rgba(124,58,237,0.08)",
-                borderColor: "rgba(124,58,237,0.25)",
-                color:       "var(--color-brand)",
-                gap:         "0.375rem",
-                padding:     `0.25rem ${fluid("0.6rem", "1.5vw", "0.75rem")}`,
-                fontSize:    fluid("0.62rem", "1.5vw", "0.75rem"),
-              }}
-            >
+            <div className="chip">
               <Zap style={{ width: "0.7rem", height: "0.7rem" }} />
               প্রতিষ্ঠাতার বার্তা
             </div>
 
             {/* Heading */}
             <div>
-              <h1 className="font-heading font-bold leading-tight mb-1" style={{ color: "var(--color-text)" }}>
-                <span
-                  className="bg-gradient-to-r from-violet-600 to-purple-400 bg-clip-text text-transparent block"
-                  style={{ fontSize: fluid("1.6rem", "5.5vw", "3rem") }}
-                >
-                  Founder&apos;s
-                </span>
-                <span
-                  className="block"
-                  style={{ fontSize: fluid("1rem", "3.5vw", "1.875rem"), marginTop: "0.25rem" }}
-                >
-                  Message
-                </span>
+              <h1 className="main-heading">
+                <span className="heading-gradient">Founder&apos;s</span>
+                <span className="heading-sub">Message</span>
               </h1>
-              <div className="w-10 h-0.5 rounded-full bg-gradient-to-r from-violet-600 to-transparent" />
+              <div className="heading-bar" />
             </div>
 
             {/* Quote card */}
-            <div
-              className="card relative overflow-hidden"
-              style={{
-                background:  "rgba(124,58,237,0.05)",
-                borderColor: "rgba(124,58,237,0.2)",
-                padding:     fluid("1rem", "3.5vw", "1.5rem"),
-              }}
-            >
-              <Quote
-                className="absolute opacity-[0.07]"
-                style={{
-                  top: "0.6rem", right: "0.6rem",
-                  width:  fluid("32px", "6vw", "60px"),
-                  height: fluid("32px", "6vw", "60px"),
-                  color:  "var(--color-brand)",
-                }}
-              />
-
-              {[
-                <>
-                  প্রকৃত স্বাধীনতা তখনই প্রতিষ্ঠিত হয়, যখন সমাজ হয় সুদমুক্ত, শোষণমুক্ত এবং অজ্ঞতামুক্ত।
-                  এই বিশ্বাস ও উপলব্ধি থেকেই{" "}
-                  <span style={{ color: "var(--color-brand)" }} className="font-semibold">
-                    Three Zeros of Freedom (3ZF)
-                  </span>{" "}
-                  ধারণার সূচনা।
-                </>,
-                "3ZF এমন একটি সমাজের স্বপ্ন দেখে, যেখানে অর্থনীতি হবে ন্যায়ভিত্তিক, মানুষ হবে মর্যাদাপূর্ণ জীবনের অধিকারী, এবং জ্ঞান হবে উন্নতির প্রধান শক্তি।",
-                "এই লক্ষ্য বাস্তবায়নের জন্য 3ZF শুধু একটি ধারণা নয়, বরং একটি সচেতন সামাজিক উদ্যোগ — যার উদ্দেশ্য একটি ন্যায্য, মানবিক ও জ্ঞানসমৃদ্ধ সমাজ গড়ে তোলা।",
-              ].map((para, i, arr) => (
-                <p
-                  key={i}
-                  className="leading-relaxed"
-                  style={{
-                    color:        "var(--color-text-secondary)",
-                    fontSize:     fluid("0.72rem", "2vw", "0.875rem"),
-                    marginBottom: i < arr.length - 1 ? fluid("0.6rem", "2vw", "1rem") : 0,
-                  }}
-                >
+            <div className="quote-card">
+              <Quote className="quote-icon" />
+              {quoteParas.map((para, i) => (
+                <p key={i} className="quote-para" style={{ marginBottom: i < quoteParas.length - 1 ? "0.85rem" : 0 }}>
                   {para}
                 </p>
               ))}
 
               {/* Signature */}
-              <div
-                className="flex items-center"
-                style={{
-                  marginTop:   fluid("0.9rem", "2.5vw", "1.25rem"),
-                  paddingTop:  fluid("0.7rem", "2vw", "1rem"),
-                  borderTop:   "1px solid rgba(124,58,237,0.15)",
-                  gap:         "0.625rem",
-                }}
-              >
-                <div
-                  className="rounded-full flex items-center justify-center text-white font-bold flex-shrink-0"
-                  style={{
-                    background: "var(--color-brand)",
-                    width:  fluid("26px", "5.5vw", "34px"),
-                    height: fluid("26px", "5.5vw", "34px"),
-                    fontSize: fluid("0.55rem", "1.4vw", "0.7rem"),
-                  }}
-                >
-                  AS
-                </div>
+              <div className="sig-row">
+                <div className="sig-avatar">AS</div>
                 <div>
-                  <p className="font-semibold" style={{ color: "var(--color-text)", fontSize: fluid("0.62rem", "1.5vw", "0.75rem") }}>
-                    — Md. Asaduzzaman Sujon
-                  </p>
-                  <p style={{ color: "var(--color-text-secondary)", fontSize: fluid("0.58rem", "1.4vw", "0.68rem") }}>
-                    Founder, Harmony Organization
-                  </p>
+                  <p className="sig-name">— Md. Asaduzzaman Sujon</p>
+                  <p className="sig-title">Founder, Harmony Organization</p>
                 </div>
               </div>
             </div>
 
-            {/* CTA buttons – stack on mobile */}
-            <div
-              className="flex flex-col sm:flex-row"
-              style={{ gap: fluid("0.5rem", "2vw", "0.75rem") }}
-            >
-              <button
-                className="btn-primary flex items-center justify-center w-full sm:w-auto"
-                style={{
-                  gap:      "0.45rem",
-                  fontSize: fluid("0.72rem", "1.9vw", "0.875rem"),
-                  padding:  `${fluid("9px", "2.2vw", "12px")} ${fluid("16px", "3.5vw", "28px")}`,
-                }}
-              >
+            {/* CTA */}
+            <div className="cta-row">
+              <button className="btn-primary">
                 আমাদের সাথে যুক্ত হোন
                 <ArrowRight style={{ width: "0.9rem", height: "0.9rem", flexShrink: 0 }} />
               </button>
-              <button
-                className="btn-secondary w-full sm:w-auto"
-                style={{
-                  fontSize: fluid("0.72rem", "1.9vw", "0.875rem"),
-                  padding:  `${fluid("9px", "2.2vw", "12px")} ${fluid("16px", "3.5vw", "28px")}`,
-                }}
-              >
-                আরও জানুন
-              </button>
+              <button className="btn-secondary">আরও জানুন</button>
             </div>
           </motion.div>
         </div>
 
-        {/* ════════════════════════════
-            3ZF CORE VALUES
-        ════════════════════════════ */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.25 }}
-          style={{ marginBottom: fluid("2.5rem", "7vw", "5rem") }}
-        >
-          <h2
-            className="font-heading font-bold"
-            style={{
-              color:        "var(--color-text)",
-              fontSize:     fluid("1.05rem", "3.2vw", "1.5rem"),
-              marginBottom: "0.375rem",
-            }}
-          >
+        {/* ── 3ZF VALUES ── */}
+        <motion.div {...fadeUp(0.25)} className="section-block">
+          <h2 className="section-title">
             3ZF-এর{" "}
             <span style={{ color: "var(--color-brand)" }}>তিনটি মূল লক্ষ্য</span>
           </h2>
-          <div
-            className="rounded-full bg-gradient-to-r from-violet-600 to-transparent"
-            style={{ width: "2.5rem", height: "2px", marginBottom: fluid("1.25rem", "3.5vw", "2rem") }}
-          />
+          <div className="section-bar" />
 
-          <div
-            className="grid grid-cols-1 sm:grid-cols-3"
-            style={{ gap: fluid("0.65rem", "2.2vw", "1rem") }}
-          >
+          <div className="values-grid">
             {values.map((v, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 + i * 0.1 }}
-                className="card flex flex-col hover:-translate-y-0.5 transition-all duration-200"
-                style={{
-                  gap:     fluid("0.55rem", "1.8vw", "0.75rem"),
-                  padding: fluid("0.9rem", "2.8vw", "1.25rem"),
-                }}
-              >
-                <div
-                  className="rounded-lg flex items-center justify-center text-white font-bold flex-shrink-0"
-                  style={{
-                    background: "var(--color-brand)",
-                    width:  fluid("26px", "5.5vw", "34px"),
-                    height: fluid("26px", "5.5vw", "34px"),
-                    fontSize: fluid("0.6rem", "1.4vw", "0.78rem"),
-                  }}
-                >
-                  {`0${i + 1}`}
-                </div>
-                <h3
-                  className="font-bold"
-                  style={{
-                    color:    "var(--color-text)",
-                    fontSize: fluid("0.78rem", "2vw", "0.875rem"),
-                  }}
-                >
-                  {v.title}
-                </h3>
-                <p
-                  className="leading-relaxed"
-                  style={{
-                    color:    "var(--color-text-secondary)",
-                    fontSize: fluid("0.68rem", "1.7vw", "0.75rem"),
-                  }}
-                >
-                  {v.desc}
-                </p>
+              <motion.div key={i} {...fadeUp(0.3 + i * 0.1)} className="value-card">
+                <div className="value-num">{`0${i + 1}`}</div>
+                <h3 className="value-title">{v.title}</h3>
+                <p className="value-desc">{v.desc}</p>
               </motion.div>
             ))}
           </div>
         </motion.div>
 
-        {/* ════════════════════════════
-            MILESTONES
-        ════════════════════════════ */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.35 }}
-          style={{ marginBottom: fluid("2.5rem", "7vw", "5rem") }}
-        >
-          <h2
-            className="font-heading font-bold"
-            style={{
-              color:        "var(--color-text)",
-              fontSize:     fluid("1.05rem", "3.2vw", "1.5rem"),
-              marginBottom: "0.375rem",
-            }}
-          >
+        {/* ── MILESTONES ── */}
+        <motion.div {...fadeUp(0.35)} className="section-block">
+          <h2 className="section-title">
             যাত্রার{" "}
             <span style={{ color: "var(--color-brand)" }}>মাইলফলক</span>
           </h2>
-          <div
-            className="rounded-full bg-gradient-to-r from-violet-600 to-transparent"
-            style={{ width: "2.5rem", height: "2px", marginBottom: fluid("1.25rem", "3.5vw", "2rem") }}
-          />
+          <div className="section-bar" />
 
-          <div className="relative">
-            {/* Vertical timeline line – sm and up */}
-            <div
-              className="absolute hidden sm:block w-px top-5 bottom-5 left-4"
-              style={{ background: "rgba(124,58,237,0.2)" }}
-            />
-
-            <div
-              className="flex flex-col sm:pl-12"
-              style={{ gap: fluid("0.55rem", "1.8vw", "0.9rem") }}
-            >
+          <div className="timeline-wrap">
+            <div className="timeline-line" />
+            <div className="timeline-list">
               {milestones.map((m, i) => (
                 <motion.div
                   key={i}
-                  initial={{ opacity: 0, x: -14 }}
+                  initial={{ opacity: 0, x: -16 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.4 + i * 0.08 }}
-                  className="card flex items-center relative"
-                  style={{
-                    gap:     fluid("0.65rem", "2.2vw", "1rem"),
-                    padding: `${fluid("0.55rem", "1.8vw", "0.75rem")} ${fluid("0.7rem", "2.2vw", "1rem")}`,
-                  }}
+                  transition={{ delay: 0.4 + i * 0.09, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                  className="milestone-card"
                 >
-                  {/* Dot */}
-                  <div
-                    className="absolute hidden sm:block rounded-full border-2"
-                    style={{
-                      background:  "var(--color-bg-secondary)",
-                      borderColor: "var(--color-brand)",
-                      width: "0.75rem", height: "0.75rem",
-                      left: "-2.85rem",
-                      top: "50%", transform: "translateY(-50%)",
-                    }}
-                  />
-
-                  {/* Icon */}
-                  <div
-                    className="rounded-xl flex items-center justify-center flex-shrink-0"
-                    style={{
-                      background: "rgba(124,58,237,0.12)",
-                      width:  fluid("30px", "5.5vw", "38px"),
-                      height: fluid("30px", "5.5vw", "38px"),
-                    }}
-                  >
-                    <m.icon
-                      style={{
-                        color:  "var(--color-brand)",
-                        width:  fluid("13px", "2.5vw", "15px"),
-                        height: fluid("13px", "2.5vw", "15px"),
-                      }}
-                    />
+                  <div className="milestone-dot" />
+                  <div className="milestone-icon-wrap">
+                    <m.icon className="milestone-icon" />
                   </div>
-
                   <div>
-                    <span
-                      className="font-bold tabular-nums block"
-                      style={{
-                        color:    "var(--color-brand)",
-                        fontSize: fluid("0.62rem", "1.5vw", "0.72rem"),
-                      }}
-                    >
-                      {m.year}
-                    </span>
-                    <p
-                      className="font-medium"
-                      style={{
-                        color:    "var(--color-text)",
-                        fontSize: fluid("0.74rem", "2vw", "0.875rem"),
-                      }}
-                    >
-                      {m.label}
-                    </p>
+                    <span className="milestone-year">{m.year}</span>
+                    <p className="milestone-label">{m.label}</p>
                   </div>
                 </motion.div>
               ))}
             </div>
           </div>
         </motion.div>
-
       </div>
+
+      {/* ════════ STYLES ════════ */}
+      <style>{`
+        /* ── CSS vars (fallback defaults) ── */
+        :root {
+          --color-brand:          #7c3aed;
+          --color-bg-secondary:   #0f0d18;
+          --color-text:           #f1eeff;
+          --color-text-secondary: #a89ec4;
+          --color-card-bg:        rgba(255,255,255,0.04);
+          --color-card-border:    rgba(255,255,255,0.08);
+        }
+
+        /* ── Decorative layers ── */
+        .deco-gradient {
+          position: absolute; inset: 0; pointer-events: none;
+          background: radial-gradient(ellipse 80% 60% at 60% 10%, rgba(124,58,237,.12), transparent 70%);
+        }
+        .deco-grid {
+          position: absolute; inset: 0; pointer-events: none; opacity: .035;
+          background-image:
+            linear-gradient(var(--color-brand) 1px, transparent 1px),
+            linear-gradient(90deg, var(--color-brand) 1px, transparent 1px);
+          background-size: clamp(36px,5.5vw,56px) clamp(36px,5.5vw,56px);
+        }
+        .deco-orb {
+          position: absolute; border-radius: 9999px; pointer-events: none;
+          filter: blur(80px); opacity: .1;
+          background: var(--color-brand);
+          width: clamp(140px,34vw,340px); height: clamp(140px,34vw,340px);
+          top: 6rem; right: -3rem;
+        }
+
+        /* ── Hero Grid ── */
+        .hero-grid {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: clamp(2rem,6vw,4rem);
+          margin-bottom: clamp(2.5rem,7vw,5rem);
+          align-items: start;
+        }
+        @media (min-width: 900px) {
+          .hero-grid { grid-template-columns: 1fr 1.55fr; align-items: center; }
+        }
+
+        /* ── Portrait column ── */
+        .portrait-col {
+          display: flex; flex-direction: column;
+          align-items: center;
+          gap: clamp(.9rem,2.8vw,1.4rem);
+        }
+        @media (min-width: 900px) {
+          .portrait-col { align-items: flex-start; }
+        }
+
+        /* Avatar */
+        .avatar-glow {
+          position: absolute; inset: 0; border-radius: 9999px;
+          filter: blur(28px); opacity: .28; transform: scale(1.25);
+          background: var(--color-brand);
+        }
+        .avatar-ring {
+          position: absolute; border-radius: 9999px;
+          border: 2px dashed rgba(124,58,237,.3);
+          inset: -9px;
+        }
+        .avatar-frame {
+          position: relative; border-radius: 9999px; overflow: hidden;
+          border: 3px solid var(--color-brand);
+          width:  clamp(96px,20vw,176px);
+          height: clamp(96px,20vw,176px);
+        }
+
+        /* Name block */
+        .name-block { text-align: center; }
+        @media (min-width: 900px) { .name-block { text-align: left; } }
+
+        .founder-name {
+          font-family: var(--font-heading, Georgia, serif);
+          font-weight: 700; margin: 0 0 .25rem;
+          color: var(--color-text);
+          font-size: clamp(.95rem,2.8vw,1.4rem);
+        }
+        .founder-role {
+          margin: 0 0 .2rem; letter-spacing: .12em; font-weight: 600;
+          color: var(--color-brand);
+          font-size: clamp(.62rem,1.6vw,.82rem);
+        }
+        .founder-org {
+          margin: 0; color: var(--color-text-secondary);
+          font-size: clamp(.58rem,1.4vw,.7rem);
+        }
+
+        /* Badges */
+        .badges-grid {
+          display: grid; grid-template-columns: 1fr 1fr;
+          gap: clamp(.45rem,1.8vw,.7rem);
+          width: 100%; max-width: min(100%, 18rem);
+        }
+        .badge-card {
+          display: flex; align-items: center;
+          gap: clamp(5px,1.4vw,9px);
+          padding: clamp(7px,1.8vw,10px) clamp(8px,2vw,12px);
+          background: var(--color-card-bg);
+          border: 1px solid var(--color-card-border);
+          border-radius: .6rem;
+        }
+        .badge-icon {
+          color: var(--color-brand); flex-shrink: 0;
+          width:  clamp(12px,2.4vw,15px);
+          height: clamp(12px,2.4vw,15px);
+        }
+        .badge-label {
+          color: var(--color-text-secondary); font-weight: 500;
+          font-size: clamp(.58rem,1.4vw,.7rem); line-height: 1.3;
+        }
+
+        /* ── Message column ── */
+        .message-col {
+          display: flex; flex-direction: column;
+          gap: clamp(.85rem,2.4vw,1.2rem);
+        }
+
+        /* Chip */
+        .chip {
+          display: inline-flex; align-items: center; width: fit-content;
+          gap: .375rem; border-radius: 9999px; font-weight: 600;
+          letter-spacing: .06em; border: 1px solid rgba(124,58,237,.28);
+          background: rgba(124,58,237,.08); color: var(--color-brand);
+          padding: .25rem clamp(.55rem,1.4vw,.75rem);
+          font-size: clamp(.6rem,1.4vw,.74rem);
+        }
+
+        /* Heading */
+        .main-heading { margin: 0; font-weight: 700; line-height: 1.12; }
+        .heading-gradient {
+          display: block;
+          background: linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%);
+          -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+          background-clip: text;
+          font-size: clamp(1.55rem,5.2vw,2.9rem);
+        }
+        .heading-sub {
+          display: block; color: var(--color-text); margin-top: .2rem;
+          font-size: clamp(.95rem,3.2vw,1.8rem);
+        }
+        .heading-bar {
+          width: 2.5rem; height: 2px; border-radius: 9999px; margin-top: .5rem;
+          background: linear-gradient(90deg, #7c3aed, transparent);
+        }
+
+        /* Quote card */
+        .quote-card {
+          position: relative; overflow: hidden; border-radius: 1rem;
+          background: rgba(124,58,237,.05);
+          border: 1px solid rgba(124,58,237,.2);
+          padding: clamp(.9rem,3.2vw,1.5rem);
+        }
+        .quote-icon {
+          position: absolute; top: .75rem; right: .75rem; opacity: .07;
+          color: var(--color-brand);
+          width:  clamp(28px,5.5vw,54px);
+          height: clamp(28px,5.5vw,54px);
+        }
+        .quote-para {
+          color: var(--color-text-secondary); line-height: 1.75;
+          font-size: clamp(.7rem,1.85vw,.87rem);
+        }
+
+        /* Signature */
+        .sig-row {
+          display: flex; align-items: center; gap: .6rem;
+          margin-top: clamp(.85rem,2.4vw,1.2rem);
+          padding-top: clamp(.65rem,1.8vw,.95rem);
+          border-top: 1px solid rgba(124,58,237,.15);
+        }
+        .sig-avatar {
+          border-radius: 9999px; background: var(--color-brand);
+          color: #fff; font-weight: 700; flex-shrink: 0;
+          display: flex; align-items: center; justify-content: center;
+          width:  clamp(26px,5vw,34px);
+          height: clamp(26px,5vw,34px);
+          font-size: clamp(.52rem,1.3vw,.68rem);
+        }
+        .sig-name {
+          margin: 0; font-weight: 600; color: var(--color-text);
+          font-size: clamp(.6rem,1.4vw,.74rem);
+        }
+        .sig-title {
+          margin: 0; color: var(--color-text-secondary);
+          font-size: clamp(.56rem,1.3vw,.68rem);
+        }
+
+        /* CTA */
+        .cta-row {
+          display: flex; flex-wrap: wrap;
+          gap: clamp(.45rem,1.8vw,.7rem);
+        }
+        .cta-row .btn-primary,
+        .cta-row .btn-secondary {
+          flex: 1 1 clamp(130px, 40%, 200px);
+          display: flex; align-items: center; justify-content: center;
+          gap: .4rem; border-radius: .65rem; font-weight: 600; cursor: pointer;
+          transition: transform .18s, box-shadow .18s;
+          font-size: clamp(.7rem,1.8vw,.87rem);
+          padding: clamp(9px,2vw,13px) clamp(14px,3vw,24px);
+          min-width: 0;
+        }
+        .cta-row .btn-primary {
+          background: var(--color-brand); color: #fff; border: none;
+          box-shadow: 0 4px 18px rgba(124,58,237,.35);
+        }
+        .cta-row .btn-primary:hover  { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(124,58,237,.5); }
+        .cta-row .btn-secondary {
+          background: transparent; color: var(--color-brand);
+          border: 1px solid rgba(124,58,237,.4);
+        }
+        .cta-row .btn-secondary:hover { background: rgba(124,58,237,.08); transform: translateY(-2px); }
+
+        /* ── Section scaffolding ── */
+        .section-block { margin-bottom: clamp(2.5rem,7vw,5rem); }
+        .section-title {
+          font-weight: 700; margin: 0 0 .35rem;
+          color: var(--color-text);
+          font-size: clamp(1rem,3vw,1.45rem);
+        }
+        .section-bar {
+          width: 2.5rem; height: 2px; border-radius: 9999px;
+          background: linear-gradient(90deg, #7c3aed, transparent);
+          margin-bottom: clamp(1.1rem,3.2vw,1.9rem);
+        }
+
+        /* Values grid */
+        .values-grid {
+          display: grid; grid-template-columns: 1fr;
+          gap: clamp(.6rem,2vw,.95rem);
+        }
+        @media (min-width: 560px) {
+          .values-grid { grid-template-columns: repeat(3, 1fr); }
+        }
+        .value-card {
+          display: flex; flex-direction: column;
+          gap: clamp(.5rem,1.6vw,.7rem);
+          padding: clamp(.85rem,2.6vw,1.2rem);
+          background: var(--color-card-bg);
+          border: 1px solid var(--color-card-border);
+          border-radius: .85rem;
+          transition: transform .2s;
+        }
+        .value-card:hover { transform: translateY(-3px); }
+        .value-num {
+          border-radius: .5rem; background: var(--color-brand);
+          color: #fff; font-weight: 700; flex-shrink: 0;
+          display: flex; align-items: center; justify-content: center;
+          width:  clamp(26px,5vw,34px);
+          height: clamp(26px,5vw,34px);
+          font-size: clamp(.58rem,1.3vw,.75rem);
+        }
+        .value-title {
+          margin: 0; font-weight: 700; color: var(--color-text);
+          font-size: clamp(.76rem,1.9vw,.87rem);
+        }
+        .value-desc {
+          margin: 0; color: var(--color-text-secondary); line-height: 1.65;
+          font-size: clamp(.66rem,1.6vw,.75rem);
+        }
+
+        /* Timeline */
+        .timeline-wrap { position: relative; }
+        .timeline-line {
+          position: absolute; left: 1.1rem; top: 1.25rem; bottom: 1.25rem;
+          width: 1px; background: rgba(124,58,237,.2);
+          display: none;
+        }
+        @media (min-width: 560px) {
+          .timeline-line { display: block; }
+        }
+        .timeline-list {
+          display: flex; flex-direction: column;
+          gap: clamp(.5rem,1.7vw,.85rem);
+        }
+        @media (min-width: 560px) {
+          .timeline-list { padding-left: 3rem; }
+        }
+        .milestone-card {
+          position: relative; display: flex; align-items: center;
+          gap: clamp(.6rem,2vw,.95rem);
+          padding: clamp(.5rem,1.7vw,.75rem) clamp(.65rem,2vw,.95rem);
+          background: var(--color-card-bg);
+          border: 1px solid var(--color-card-border);
+          border-radius: .75rem;
+          transition: transform .2s;
+        }
+        .milestone-card:hover { transform: translateX(4px); }
+        .milestone-dot {
+          position: absolute; display: none;
+          border-radius: 9999px; border: 2px solid var(--color-brand);
+          background: var(--color-bg-secondary);
+          width: .75rem; height: .75rem;
+          left: -1.9rem; top: 50%; transform: translateY(-50%);
+        }
+        @media (min-width: 560px) {
+          .milestone-dot { display: block; }
+        }
+        .milestone-icon-wrap {
+          border-radius: .65rem; flex-shrink: 0;
+          display: flex; align-items: center; justify-content: center;
+          background: rgba(124,58,237,.12);
+          width:  clamp(28px,5vw,38px);
+          height: clamp(28px,5vw,38px);
+        }
+        .milestone-icon {
+          color: var(--color-brand);
+          width:  clamp(12px,2.3vw,15px);
+          height: clamp(12px,2.3vw,15px);
+        }
+        .milestone-year {
+          display: block; font-weight: 700; font-variant-numeric: tabular-nums;
+          color: var(--color-brand);
+          font-size: clamp(.6rem,1.4vw,.72rem);
+        }
+        .milestone-label {
+          margin: 0; font-weight: 500; color: var(--color-text);
+          font-size: clamp(.72rem,1.9vw,.87rem);
+        }
+
+        /* ── Extra-small phones (<380px) ── */
+        @media (max-width: 379px) {
+          .badges-grid { grid-template-columns: 1fr 1fr; }
+          .heading-gradient { font-size: 1.45rem; }
+          .heading-sub      { font-size: .9rem;   }
+          .cta-row .btn-primary,
+          .cta-row .btn-secondary { flex: 1 1 100%; }
+        }
+
+        /* ── Tablet (600–899px) ── */
+        @media (min-width: 600px) and (max-width: 899px) {
+          .portrait-col { flex-direction: row; align-items: flex-start; flex-wrap: wrap; justify-content: center; }
+          .name-block, .badges-grid { text-align: left; }
+          .badges-grid { max-width: 100%; }
+        }
+
+        /* ── Large desktop (≥1400px) ── */
+        @media (min-width: 1400px) {
+          .hero-grid { grid-template-columns: 1fr 1.7fr; }
+        }
+      `}</style>
     </section>
   );
 }

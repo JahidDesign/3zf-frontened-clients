@@ -1,14 +1,22 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import Cookies from 'js-cookie';
-import api from '@/lib/axios';
+import api, { saveTokens, clearTokens } from '@/lib/api';
 
-export interface User {
-  _id: string; name: string; email: string; phone: string;
-  avatar?: string; coverPhoto?: string;
-  role: 'user' | 'admin' | 'superadmin';
-  isVerified: boolean; bio?: string;
-  language: 'en' | 'bn'; theme: 'light' | 'dark';
+interface User {
+  _id: string;
+  name: string;
+  username: string;
+  email: string;
+  avatar?: string;
+  coverPhoto?: string;
+  bio?: string;
+  role: 'user' | 'admin' | 'superadmin' | 'moderator';
+  isVerified: boolean;
+  friends: any[];
+  friendRequests: any[];
+  language: 'en' | 'bn';
+  theme: 'light' | 'dark' | 'system';
+  [key: string]: any;
 }
 
 interface AuthState {
@@ -16,71 +24,81 @@ interface AuthState {
   accessToken: string | null;
   refreshToken: string | null;
   isLoading: boolean;
-  setTokens: (access: string, refresh: string) => void;
-  setUser: (user: User) => void;
-  updateUser: (partial: Partial<User>) => void;
-  logout: () => void;
+  isAuthenticated: boolean;
+  isHydrated: boolean;
+  setAuth: (user: User, accessToken: string, refreshToken: string) => void;
+  setUser: (user: Partial<User>) => void;
+  logout: () => Promise<void>;
   fetchMe: () => Promise<void>;
 }
 
-export const useAuthStore = create<AuthState>()(
+const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       user: null,
       accessToken: null,
       refreshToken: null,
       isLoading: false,
+      isAuthenticated: false,
+      isHydrated: false,
 
-      setTokens: (accessToken, refreshToken) => {
-        set({ accessToken, refreshToken });
-        // 7 day cookies — prevents auto-logout
-        Cookies.set('accessToken',  accessToken,  { expires: 7, sameSite: 'lax' });
-        Cookies.set('refreshToken', refreshToken, { expires: 30, sameSite: 'lax' });
+      setAuth: (user, accessToken, refreshToken) => {
+        // store update + axios header + localStorage sync একসাথে
+        saveTokens(accessToken, refreshToken);
+        set({ user, accessToken, refreshToken, isAuthenticated: true });
       },
 
-      setUser: (user) => set({ user }),
+      setUser: (updates) =>
+        set((s) => ({ user: s.user ? { ...s.user, ...updates } : s.user })),
 
-      updateUser: (partial) => set(s => ({ user: s.user ? { ...s.user, ...partial } : null })),
-
-      logout: () => {
-        set({ user: null, accessToken: null, refreshToken: null });
-        Cookies.remove('accessToken');
-        Cookies.remove('refreshToken');
+      logout: async () => {
+        try { await api.post('/auth/logout'); } catch {}
+        clearTokens();
+        set({
+          user: null,
+          accessToken: null,
+          refreshToken: null,
+          isAuthenticated: false,
+        });
+        window.location.href = '/';
       },
 
       fetchMe: async () => {
-        const token = Cookies.get('accessToken') || get().accessToken;
-        if (!token) return;
+        const { accessToken } = get();
+        if (!accessToken) return;
+        set({ isLoading: true });
         try {
-          set({ isLoading: true });
           const { data } = await api.get('/auth/me');
-          set({ user: data.user });
-        } catch (e: any) {
-          // Only logout on explicit 401, not on network errors
-          if (e?.response?.status === 401) {
-            // Try refresh first
-            const rt = Cookies.get('refreshToken') || get().refreshToken;
-            if (rt) {
-              try {
-                const res = await api.post('/auth/refresh', { refreshToken: rt });
-                Cookies.set('accessToken', res.data.accessToken, { expires: 7, sameSite: 'lax' });
-                set({ accessToken: res.data.accessToken });
-                const { data } = await api.get('/auth/me');
-                set({ user: data.user });
-                return;
-              } catch {}
-            }
-            get().logout();
-          }
-          // Network errors — don't logout
+          set({ user: data.user, isAuthenticated: true });
+        } catch {
+          // interceptor already handles 401 → refresh → retry
+          // যদি তারপরও fail করে তাহলে authenticated না
+          set({ isAuthenticated: false });
         } finally {
           set({ isLoading: false });
         }
       },
     }),
     {
-      name: '3zf-auth-v2',
-      partialize: (s) => ({ accessToken: s.accessToken, refreshToken: s.refreshToken, user: s.user }),
+      name: '3zf-auth',
+      partialize: (state) => ({
+        user: state.user,
+        accessToken: state.accessToken,
+        refreshToken: state.refreshToken,
+        isAuthenticated: state.isAuthenticated,
+      }),
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          state.isHydrated = true;
+          // Hydration এর পরে axios header restore
+          if (state.accessToken) {
+            api.defaults.headers.common['Authorization'] =
+              `Bearer ${state.accessToken}`;
+          }
+        }
+      },
     }
   )
 );
+
+export default useAuthStore;
