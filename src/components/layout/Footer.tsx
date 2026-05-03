@@ -1,15 +1,27 @@
 import Link from 'next/link';
-
+import Image from 'next/image';
 export default function MainFooter() {
   return (
     <footer className="border-t mt-16 py-10 px-4" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg)' }}>
       <div className="max-w-6xl mx-auto">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-8">
           <div>
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-xl gradient-brand flex items-center justify-center text-white font-bold text-sm">3Z</div>
-              <span className="font-heading font-bold" style={{ color: 'var(--color-text)' }}>3ZF Platform</span>
-            </div>
+             <Link href="/" className="flex items-center gap-2.5 flex-shrink-0">
+                      <Image
+                        src="/3zf.png"
+                        alt="3ZF Logo"
+                        width={32}
+                        height={32}
+                        className="object-contain rounded-xl"
+                        priority
+                      />
+                      <span
+                        className="font-heading font-bold text-lg hidden sm:block"
+                        style={{ color: 'var(--color-text)' }}
+                      >
+                        3ZF
+                      </span>
+                    </Link>
             <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
               Three Zeros of Freedom — A unified platform for community, organisation, and commerce.
             </p>

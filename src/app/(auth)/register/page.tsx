@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
@@ -7,7 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { Eye, EyeOff, User, Mail, Lock, Phone, Camera, ArrowRight, CheckCircle } from 'lucide-react';
+import { Eye, EyeOff, User, Mail, Lock, Phone, Camera, ArrowRight, CheckCircle, RefreshCw } from 'lucide-react';
 import useAuthStore from '@/store/authStore';
 import api from '@/lib/api';
 
@@ -21,30 +21,60 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>;
 
+const RESEND_COOLDOWN_SEC = 60;
+
 export default function RegisterPage() {
   const router = useRouter();
   const { setAuth } = useAuthStore();
   const [step, setStep] = useState<'form' | 'otp'>('form');
   const [loading, setLoading] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
   const [showPass, setShowPass] = useState(false);
   const [userId, setUserId] = useState('');
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [avatar, setAvatar] = useState<string | null>(null);
+  const [resendCooldown, setResendCooldown] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const submittedRef = useRef(false);
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({ resolver: zodResolver(schema) });
 
+  const startCooldown = () => {
+    setResendCooldown(RESEND_COOLDOWN_SEC);
+    if (cooldownRef.current) clearInterval(cooldownRef.current);
+    cooldownRef.current = setInterval(() => {
+      setResendCooldown(prev => {
+        if (prev <= 1) { clearInterval(cooldownRef.current!); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  useEffect(() => () => { if (cooldownRef.current) clearInterval(cooldownRef.current); }, []);
+
+  // ─── Auto-verify when all 6 digits filled ────────────────────────────────
+  useEffect(() => {
+    if (step === 'otp' && otp.every(d => d !== '')) {
+      verifyOtp(otp.join(''));
+    }
+  }, [otp, step]);
+
   const onSubmit = async (data: FormData) => {
+    if (submittedRef.current) return;
+    submittedRef.current = true;
     setLoading(true);
     try {
       const res = await api.post('/auth/register', { ...data, avatar });
       if (res.data.success) {
         setUserId(res.data.userId);
         setStep('otp');
+        startCooldown();
         toast.success('OTP sent to your email!');
       }
     } catch (err: any) {
+      submittedRef.current = false;
       toast.error(err.response?.data?.message || 'Registration failed');
     } finally {
       setLoading(false);
@@ -53,6 +83,7 @@ export default function RegisterPage() {
 
   const handleOtpChange = (index: number, value: string) => {
     if (value.length > 1) return;
+    if (!/^\d*$/.test(value)) return; // digits only
     const newOtp = [...otp];
     newOtp[index] = value;
     setOtp(newOtp);
@@ -60,11 +91,37 @@ export default function RegisterPage() {
   };
 
   const handleOtpKeyDown = (index: number, e: React.KeyboardEvent) => {
-    if (e.key === 'Backspace' && !otp[index] && index > 0) otpRefs.current[index - 1]?.focus();
+    if (e.key === 'Backspace' && !otp[index] && index > 0) {
+      otpRefs.current[index - 1]?.focus();
+    }
+    // Allow navigating with arrow keys
+    if (e.key === 'ArrowLeft' && index > 0) otpRefs.current[index - 1]?.focus();
+    if (e.key === 'ArrowRight' && index < 5) otpRefs.current[index + 1]?.focus();
   };
 
-  const verifyOtp = async () => {
-    const otpStr = otp.join('');
+  // ─── Paste handler ────────────────────────────────────────────────────────
+  const handleOtpPaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    if (!pasted) return;
+
+    const newOtp = [...otp];
+    pasted.split('').forEach((char, i) => { newOtp[i] = char; });
+    setOtp(newOtp);
+
+    // Focus the next empty box, or last box if all filled
+    const nextEmpty = newOtp.findIndex(d => d === '');
+    const focusIndex = nextEmpty === -1 ? 5 : nextEmpty;
+    otpRefs.current[focusIndex]?.focus();
+
+    // If full 6 digits pasted, trigger verify immediately
+    if (pasted.length === 6) {
+      verifyOtp(pasted);
+    }
+  };
+
+  const verifyOtp = async (otpString?: string) => {
+    const otpStr = otpString ?? otp.join('');
     if (otpStr.length !== 6) return toast.error('Enter complete OTP');
     setLoading(true);
     try {
@@ -76,8 +133,29 @@ export default function RegisterPage() {
       }
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Invalid OTP');
+      // Clear OTP fields on wrong code so user can retry cleanly
+      setOtp(['', '', '', '', '', '']);
+      otpRefs.current[0]?.focus();
     } finally {
       setLoading(false);
+    }
+  };
+
+  const resendOtp = async () => {
+    if (resendCooldown > 0 || resendLoading) return;
+    setResendLoading(true);
+    try {
+      const res = await api.post('/auth/resend-otp', { userId });
+      if (res.data.success) {
+        setOtp(['', '', '', '', '', '']);
+        otpRefs.current[0]?.focus();
+        startCooldown();
+        toast.success('New OTP sent! Check your email.');
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to resend OTP');
+    } finally {
+      setResendLoading(false);
     }
   };
 
@@ -112,8 +190,9 @@ export default function RegisterPage() {
             <div key={s} className="flex items-center gap-2">
               <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all
                 ${i === 0 && step === 'form' ? 'gradient-brand text-white' :
-                  i === 0 && step === 'otp' ? 'bg-green-500 text-white' :
-                  i === 1 && step === 'otp' ? 'gradient-brand text-white' : 'bg-[var(--color-border)] text-[var(--color-text-muted)]'}`}>
+                  i === 0 && step === 'otp'  ? 'bg-green-500 text-white' :
+                  i === 1 && step === 'otp'  ? 'gradient-brand text-white' :
+                  'bg-[var(--color-border)] text-[var(--color-text-muted)]'}`}>
                 {i === 0 && step === 'otp' ? <CheckCircle className="w-4 h-4" /> : i + 1}
               </div>
               <span className="text-xs font-medium hidden sm:block" style={{ color: 'var(--color-text-secondary)' }}>{s}</span>
@@ -124,6 +203,8 @@ export default function RegisterPage() {
 
         <motion.div className="card shadow-card">
           <AnimatePresence mode="wait">
+
+            {/* ── STEP 1: Registration form ── */}
             {step === 'form' ? (
               <motion.form key="form" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}
                 onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -133,15 +214,14 @@ export default function RegisterPage() {
                   <button type="button" onClick={() => fileRef.current?.click()}
                     className="relative w-20 h-20 rounded-full overflow-hidden group border-2 border-dashed transition-colors hover:border-[var(--color-brand)]"
                     style={{ borderColor: 'var(--color-border)' }}>
-                    {avatar ? (
-                      <img src={avatar} alt="Avatar" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center gap-1"
-                        style={{ background: 'var(--color-bg-tertiary)' }}>
-                        <Camera className="w-6 h-6" style={{ color: 'var(--color-text-muted)' }} />
-                        <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Photo</span>
-                      </div>
-                    )}
+                    {avatar
+                      ? <img src={avatar} alt="Avatar" className="w-full h-full object-cover" />
+                      : <div className="w-full h-full flex flex-col items-center justify-center gap-1"
+                          style={{ background: 'var(--color-bg-tertiary)' }}>
+                          <Camera className="w-6 h-6" style={{ color: 'var(--color-text-muted)' }} />
+                          <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Photo</span>
+                        </div>
+                    }
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                       <Camera className="w-5 h-5 text-white" />
                     </div>
@@ -191,8 +271,9 @@ export default function RegisterPage() {
                       style={{ paddingLeft: '2.5rem', paddingRight: '2.75rem' }} />
                     <button type="button" onClick={() => setShowPass(!showPass)}
                       className="absolute right-3.5 top-1/2 -translate-y-1/2">
-                      {showPass ? <EyeOff className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
-                        : <Eye className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />}
+                      {showPass
+                        ? <EyeOff className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
+                        : <Eye    className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />}
                     </button>
                   </div>
                   {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password.message}</p>}
@@ -209,41 +290,96 @@ export default function RegisterPage() {
                   {errors.confirmPassword && <p className="text-red-500 text-xs mt-1">{errors.confirmPassword.message}</p>}
                 </div>
 
-                <button type="submit" disabled={loading} className="btn-primary w-full py-3 flex items-center justify-center gap-2 text-base mt-2">
-                  {loading ? <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                <button type="submit" disabled={loading}
+                  className="btn-primary w-full py-3 flex items-center justify-center gap-2 text-base mt-2">
+                  {loading
+                    ? <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                      </svg>
                     : <>Create Account <ArrowRight className="w-4 h-4" /></>}
                 </button>
               </motion.form>
+
             ) : (
+
+              /* ── STEP 2: OTP verification ── */
               <motion.div key="otp" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
                 className="text-center space-y-6">
+
                 <div className="w-16 h-16 rounded-full gradient-brand flex items-center justify-center mx-auto">
                   <Mail className="w-8 h-8 text-white" />
                 </div>
+
                 <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
                   We sent a 6-digit code to your email. Enter it below to verify your account.
+                  <br />
+                  <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                    Code expires in 45 minutes. You can also paste it directly.
+                  </span>
                 </p>
 
                 {/* OTP inputs */}
                 <div className="flex justify-center gap-2">
                   {otp.map((digit, i) => (
-                    <input key={i}
+                    <input
+                      key={i}
                       ref={el => { otpRefs.current[i] = el; }}
-                      type="text" inputMode="numeric" maxLength={1} value={digit}
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={1}
+                      value={digit}
                       onChange={e => handleOtpChange(i, e.target.value)}
                       onKeyDown={e => handleOtpKeyDown(i, e)}
-                      className="w-11 h-12 text-center text-lg font-bold rounded-xl"
-                      style={{ borderColor: digit ? 'var(--color-brand)' : 'var(--color-border)', padding: 0 }}
+                      onPaste={handleOtpPaste}         // ✅ paste on any box
+                      disabled={loading}
+                      className="w-11 h-12 text-center text-lg font-bold rounded-xl transition-all"
+                      style={{
+                        borderColor: digit ? 'var(--color-brand)' : 'var(--color-border)',
+                        padding: 0,
+                        opacity: loading ? 0.6 : 1,
+                      }}
                     />
                   ))}
                 </div>
 
-                <button onClick={verifyOtp} disabled={loading} className="btn-primary w-full py-3 flex items-center justify-center gap-2">
-                  {loading ? <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                <button onClick={() => verifyOtp()} disabled={loading}
+                  className="btn-primary w-full py-3 flex items-center justify-center gap-2">
+                  {loading
+                    ? <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                      </svg>
                     : <>Verify & Continue <ArrowRight className="w-4 h-4" /></>}
                 </button>
 
-                <button onClick={() => { setStep('form'); setOtp(['','','','','','']); }}
+                {/* Resend OTP */}
+                <div className="flex flex-col items-center gap-1">
+                  {resendCooldown > 0 ? (
+                    <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                      Resend OTP in{' '}
+                      <span className="font-semibold tabular-nums" style={{ color: 'var(--color-brand)' }}>
+                        {resendCooldown}s
+                      </span>
+                    </p>
+                  ) : (
+                    <button onClick={resendOtp} disabled={resendLoading}
+                      className="flex items-center gap-1.5 text-sm font-medium transition-opacity hover:opacity-75"
+                      style={{ color: 'var(--color-brand)' }}>
+                      <RefreshCw className={`w-3.5 h-3.5 ${resendLoading ? 'animate-spin' : ''}`} />
+                      {resendLoading ? 'Sending...' : 'Resend OTP'}
+                    </button>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => {
+                    setStep('form');
+                    setOtp(['', '', '', '', '', '']);
+                    submittedRef.current = false;
+                    if (cooldownRef.current) clearInterval(cooldownRef.current);
+                    setResendCooldown(0);
+                  }}
                   className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
                   ← Change email
                 </button>

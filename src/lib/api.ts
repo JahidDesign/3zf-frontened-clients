@@ -9,7 +9,8 @@ const api = axios.create({
   timeout: 30000,
 });
 
-// ─── Token Helpers — Zustand localStorage এর সাথে sync ──────────────────────
+// ─── Storage ──────────────────────────────────────────────────────────────────
+
 const STORE_KEY = '3zf-auth';
 
 export const getAccessToken = (): string | null => {
@@ -26,7 +27,6 @@ export const getRefreshToken = (): string | null => {
   } catch { return null; }
 };
 
-// Zustand store এর localStorage directly update — store re-render হবে
 export const saveTokens = (accessToken: string, refreshToken: string): void => {
   try {
     const raw    = localStorage.getItem(STORE_KEY);
@@ -42,7 +42,7 @@ export const clearTokens = (): void => {
   try {
     const raw = localStorage.getItem(STORE_KEY);
     if (raw) {
-      const parsed = JSON.parse(raw);
+      const parsed                 = JSON.parse(raw);
       parsed.state.accessToken     = null;
       parsed.state.refreshToken    = null;
       parsed.state.user            = null;
@@ -59,16 +59,86 @@ const forceLogout = (): void => {
   setTimeout(() => { window.location.href = '/login'; }, 800);
 };
 
+// ─── JWT expiry check (no library needed) ────────────────────────────────────
+
+const TOKEN_BUFFER_SECONDS = 30;
+
+const isTokenExpiredOrExpiring = (token: string | null): boolean => {
+  if (!token) return true;
+  try {
+    const payload = token.split('.')[1];
+    if (!payload) return true;
+    const padded  = payload.replace(/-/g, '+').replace(/_/g, '/').padEnd(
+      payload.length + ((4 - (payload.length % 4)) % 4), '=',
+    );
+    const { exp } = JSON.parse(atob(padded));
+    if (!exp) return false; // no expiry claim → treat as valid
+    return exp - TOKEN_BUFFER_SECONDS < Date.now() / 1000;
+  } catch {
+    return true;
+  }
+};
+
+// ─── Proactive refresh on app start ──────────────────────────────────────────
+
+let _refreshPromise: Promise<void> | null = null;
+
+export const ensureFreshToken = (): Promise<void> => {
+  if (_refreshPromise) return _refreshPromise;
+
+  const accessToken  = getAccessToken();
+  const refreshToken = getRefreshToken();
+
+  // No refresh token → nothing to do
+  if (!refreshToken) return Promise.resolve();
+
+  // Access token still valid → skip
+  if (!isTokenExpiredOrExpiring(accessToken)) return Promise.resolve();
+
+  // Refresh token itself expired → logout immediately
+  if (isTokenExpiredOrExpiring(refreshToken)) {
+    forceLogout();
+    return Promise.resolve();
+  }
+
+  _refreshPromise = axios
+    .post(`${BASE_URL}/auth/refresh`, { refreshToken }, { withCredentials: true })
+    .then(({ data }) => {
+      saveTokens(data.accessToken, data.refreshToken);
+    })
+    .catch(() => {
+      forceLogout();
+    })
+    .finally(() => {
+      _refreshPromise = null;
+    });
+
+  return _refreshPromise;
+};
+
 // ─── Request Interceptor ──────────────────────────────────────────────────────
-api.interceptors.request.use((config) => {
+
+api.interceptors.request.use(async (config) => {
+  // Skip for the refresh endpoint itself to avoid loops
+  if (config.url?.includes('/auth/refresh')) return config;
+
+  // Proactively refresh if token is expiring soon
+  if (isTokenExpiredOrExpiring(getAccessToken())) {
+    await ensureFreshToken();
+  }
+
   const token = getAccessToken();
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
 // ─── Response Interceptor ────────────────────────────────────────────────────
+
 let isRefreshing = false;
-let failedQueue: Array<{ resolve: (v: any) => void; reject: (e: any) => void }> = [];
+let failedQueue: Array<{
+  resolve: (v: any) => void;
+  reject:  (e: any) => void;
+}> = [];
 
 const processQueue = (error: any, token: string | null = null): void => {
   failedQueue.forEach(p => error ? p.reject(error) : p.resolve(token));
@@ -82,28 +152,29 @@ api.interceptors.response.use(
     const status = error.response?.status;
     const code   = error.response?.data?.code;
 
-    // 401 ছাড়া অন্য error — pass through করুন
-    if (status !== 401 || orig._retry) {
-      return Promise.reject(error);
-    }
+    // Never retry 5xx — stops request loops on server errors
+    if (status >= 500) return Promise.reject(error);
 
-    // Refresh endpoint নিজেই 401 দিলে — refresh token ও expired
+    // Only handle 401s
+    if (status !== 401) return Promise.reject(error);
+
+    // Already retried → give up
+    if (orig._retry) return Promise.reject(error);
+
+    // Refresh endpoint itself returned 401 → logout
     if (orig.url?.includes('/auth/refresh')) {
       forceLogout();
       return Promise.reject(error);
     }
 
-    // TOKEN_EXPIRED code না থাকলে — এটা auth error, refresh করার দরকার নেই
-    // যেমন: wrong password, banned user ইত্যাদি
-    if (code !== 'TOKEN_EXPIRED') {
-      return Promise.reject(error);
-    }
+    // Only refresh on TOKEN_EXPIRED — wrong password / banned / no token won't be fixed by refresh
+    if (code !== 'TOKEN_EXPIRED') return Promise.reject(error);
 
-    // Concurrent requests — queue করুন
+    // Another refresh already in-flight → queue this request
     if (isRefreshing) {
-      return new Promise((resolve, reject) =>
-        failedQueue.push({ resolve, reject })
-      ).then(token => {
+      return new Promise((resolve, reject) => {
+        failedQueue.push({ resolve, reject });
+      }).then(token => {
         orig.headers.Authorization = `Bearer ${token}`;
         return api(orig);
       }).catch(err => Promise.reject(err));
@@ -114,33 +185,28 @@ api.interceptors.response.use(
 
     try {
       const rt = getRefreshToken();
-      if (!rt) {
+
+      // No refresh token, or refresh token itself expired → logout
+      if (!rt || isTokenExpiredOrExpiring(rt)) {
+        processQueue(error, null);
         forceLogout();
         return Promise.reject(error);
       }
 
-      // ← সঠিক endpoint: /auth/refresh
       const { data } = await axios.post(
         `${BASE_URL}/auth/refresh`,
         { refreshToken: rt },
         { withCredentials: true },
       );
 
-      // Backend থেকে আসে: { success, accessToken, refreshToken }
       saveTokens(data.accessToken, data.refreshToken);
       processQueue(null, data.accessToken);
       orig.headers.Authorization = `Bearer ${data.accessToken}`;
-      return api(orig); // original request retry
+      return api(orig);
 
     } catch (err: any) {
       processQueue(err, null);
-      const errStatus = err?.response?.status;
-      const errCode   = err?.response?.data?.code;
-
-      // Refresh token ও expired বা invalid — এবার logout করুন
-      if (errStatus === 401 || errStatus === 403 || errCode === 'TOKEN_EXPIRED') {
-        forceLogout();
-      }
+      forceLogout(); // any refresh failure → logout
       return Promise.reject(err);
     } finally {
       isRefreshing = false;

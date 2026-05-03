@@ -37,12 +37,6 @@ const values = [
   },
 ];
 
-const badges = [
-  { icon: ShieldCheck, label: "বিশ্বস্ত নেতৃত্ব"   },
-  { icon: Globe2,      label: "জাতীয় দৃষ্টিভঙ্গি" },
-  { icon: Star,        label: "অনুপ্রেরণামূলক"      },
-  { icon: Users,       label: "কমিউনিটি-কেন্দ্রিক" },
-];
 
 const quoteParas = [
   <>
@@ -126,19 +120,11 @@ export default function FounderPage() {
               <h2 className="founder-name">Md. Asaduzzaman Sujon</h2>
               <p className="founder-role">প্রতিষ্ঠাতা ও পরিচালক</p>
               <p className="founder-org">
-                Three Zeros of Freedom (3ZF) · Harmony Organization
+                Three Zeros of Management solution Ltd. (3ZF) & Harmony Organization
               </p>
             </div>
 
-            {/* Badges */}
-            <div className="badges-grid">
-              {badges.map((b) => (
-                <div key={b.label} className="badge-card">
-                  <b.icon className="badge-icon" />
-                  <span className="badge-label">{b.label}</span>
-                </div>
-              ))}
-            </div>
+         
           </motion.div>
 
           {/* RIGHT — message */}
@@ -172,7 +158,7 @@ export default function FounderPage() {
                 <div className="sig-avatar">AS</div>
                 <div>
                   <p className="sig-name">— Md. Asaduzzaman Sujon</p>
-                  <p className="sig-title">Founder, Harmony Organization</p>
+                  <p className="sig-title">Founder & CEO 3ZF Management Solution Ltd.</p>
                 </div>
               </div>
             </div>

@@ -68,15 +68,15 @@ export default function AboutPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7 }}
           >
-            <span className="ab-hero-badge">🌐 Three Zeros of Freedom</span>
+         
             <h1 className="ab-hero-title">
-              About <span className="ab-hero-accent">3ZF</span>
-              <br />আমাদের পরিচয়
+              About <br/> 
+             <p className=''> <span className="ab-hero-accent">3ZF</span> <span className='ml-1'>Management </span> </p> 
+              <span className='ml-2 mt-1'>   Solution Ltd.</span>
+              <br /> <span className='mt-2'>আমাদের পরিচয়</span>
             </h1>
             <p className="ab-hero-desc">
-              3ZF (Three Zeros of Freedom) হলো একটি মানবিক, সামাজিক ও উন্নয়নমূলক আন্দোলন,
-              যার লক্ষ্য একটি সুদমুক্ত (Interest-Free), শোষণমুক্ত (Exploitation-Free) এবং
-              জ্ঞানভিত্তিক (Knowledge-Based) সমাজ গঠন।
+             সফটওয়্যার সিস্টেম পরিচালনা, কেন্দ্রীয় অপারেশনাল ফান্ড ব্যবস্থাপনা সহায়তা, অপারেশনাল গাইডলাইন ও স্ট্যান্ডার্ড অপারেটিং প্রসিডিউর (SOP) প্রণয়ন ও বাস্তবায়ন সহায়তা, জনবল প্রশিক্ষণ ও সক্ষমতা উন্নয়ন, ব্যবস্থাপনা তদারকি, সাপ্লাই চেইন ও ডিজিটাল ক্রয়-বিক্রয় ব্যবস্থাপনা এবং উদ্যোক্তা ও সামাজিক উদ্যোগ সহযোগিতা সেবা।
             </p>
             <div className="ab-hero-btns">
               <Link href="/register" className="ab-btn-primary">
@@ -87,12 +87,6 @@ export default function AboutPage() {
               </Link>
             </div>
           </motion.div>
-
-          {/* Scroll indicator */}
-          <div className="ab-scroll-hint">
-            <span>SCROLL</span>
-            <div className="ab-scroll-dot" />
-          </div>
         </section>
 
         {/* ── MISSION + VISION SIDE BY SIDE ── */}
@@ -384,13 +378,14 @@ export default function AboutPage() {
           margin-bottom: 20px;
           text-shadow: 0 2px 28px rgba(0, 0, 0, 0.35);
         }
-        .ab-hero-accent { color: #f9a8d4; }
+        .ab-hero-accent { color: #ffff }
         .ab-hero-desc {
           font-size: clamp(0.9rem, 1.6vw, 1.1rem);
           color: #ddd6fe;
           line-height: 1.85;
           max-width: 620px;
-          margin: 0 auto 32px;
+          margin: 2px auto 32px;
+          
         }
         .ab-hero-btns {
           display: flex;

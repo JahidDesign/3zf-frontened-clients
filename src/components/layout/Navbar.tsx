@@ -1,12 +1,12 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Menu, X, Sun, Moon,
-  User, LogOut, Settings, Bell, ShoppingCart,
+  User, LogOut, Settings, Bell, ShoppingCart, Lock,
 } from 'lucide-react';
 import Image from 'next/image';
 import useAuthStore from '@/store/authStore';
@@ -16,6 +16,7 @@ import { useT } from '@/hooks/useT';
 type DropdownItem = {
   label: string;
   href: string;
+  requiresAuth?: boolean;
 };
 
 type NavItem = {
@@ -23,11 +24,13 @@ type NavItem = {
   label: string;
   image: string;
   href?: string;
+  requiresAuth?: boolean;
   dropdown?: DropdownItem[];
 };
 
 export default function MainNavbar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { theme, setTheme } = useTheme();
   const { user, isAuthenticated, logout } = useAuthStore();
   const { t, lang } = useT();
@@ -35,6 +38,18 @@ export default function MainNavbar() {
   const [dropdownOpen, setDropdownOpen] = useState<string | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+
+  const handleProtectedNav = (
+    e: React.MouseEvent,
+    href: string,
+    requiresAuth?: boolean,
+  ) => {
+    if (requiresAuth && !isAuthenticated) {
+      e.preventDefault();
+      router.push(`/login?redirect=${encodeURIComponent(href)}`);
+      setMobileOpen(false);
+    }
+  };
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -72,19 +87,22 @@ export default function MainNavbar() {
       key: 'community',
       href: '/community',
       label: t.nav.community,
-      image: '/icons/community.png',
+      image: '/4x/harmony.png',
+      requiresAuth: true,
     },
     {
       key: 'organisation',
       href: '/organisation',
       label: t.nav.organisation,
-      image: '/icons/organisation.png',
+      image: '/4x/organisation.png',
+      requiresAuth: true,
     },
     {
       key: 'association',
       href: '/association',
       label: t.nav.association,
-      image: '/icons/association.png',
+      image: '/4x/association.png',
+      requiresAuth: true,
     },
     {
       key: 'supershop',
@@ -111,12 +129,9 @@ export default function MainNavbar() {
     },
   ];
 
-  // ── image box: active হলে brand-tinted bg, otherwise plain ──
-  // Icons always show in their NATIVE colors (no filter override)
   const NavImage = ({
     image,
     label,
-    active,
   }: {
     image: string;
     label: string;
@@ -125,28 +140,22 @@ export default function MainNavbar() {
     <span
       className="relative flex items-center justify-center rounded-xl overflow-hidden flex-shrink-0"
       style={{
-        width: 36,
-        height: 36,
-        background: active
-          ? 'var(--color-brand-soft, rgba(107,70,193,0.15))'
-          : 'var(--color-bg-hover)',
+        width: 44,
+        height: 44,
+        background: 'transparent',
       }}
     >
       <Image
         src={image}
         alt={label}
         fill
-        sizes="36px"
+        sizes="44px"
         className="object-cover"
-        style={{
-          padding: active ? 6 : 7,
-          filter: 'none', // ← native image colors always
-        }}
+        style={{ filter: 'none' }}
       />
     </span>
   );
 
-  // Check if the user has admin access
   const isAdmin =
     user?.role === 'admin' ||
     user?.role === 'superadmin' ||
@@ -157,28 +166,28 @@ export default function MainNavbar() {
       className="fixed top-0 left-0 right-0 z-50 glass border-b"
       style={{ borderColor: 'var(--color-border)', height: 'var(--navbar-height)' }}
     >
-      <div className="max-w-7xl mx-auto px-4 h-full flex items-center justify-between gap-4">
+      <div className="max-w-7xl mx-auto px-4 h-full flex items-center justify-between gap-2">
 
         {/* ───── Logo ───── */}
-        <Link href="/" className="flex items-center gap-2.5 flex-shrink-0">
+        <Link href="/" className="flex items-center gap-2 flex-shrink-0 min-w-0">
           <Image
             src="/3zf.png"
             alt="3ZF Logo"
             width={32}
             height={32}
-            className="object-contain rounded-xl"
+            className="object-contain rounded-xl flex-shrink-0"
             priority
           />
           <span
-            className="font-heading font-bold text-lg hidden sm:block"
+            className="font-heading font-bold leading-tight text-[10px] xs:text-xs sm:text-sm lg:text-base"
             style={{ color: 'var(--color-text)' }}
           >
-            3ZF
+            3ZF Management <br /> Solution Ltd.
           </span>
         </Link>
 
         {/* ───── Desktop Nav ───── */}
-        <nav className="hidden lg:flex items-center gap-1 flex-1 justify-center">
+        <nav className="hidden lg:flex items-center gap-2 flex-1 justify-center">
           {navItems.map((item) =>
             item.dropdown ? (
               <div
@@ -189,7 +198,7 @@ export default function MainNavbar() {
               >
                 <button
                   className={`
-                    relative flex items-center justify-center w-12 h-12
+                    relative flex items-center justify-center w-14 h-14
                     rounded-xl transition-colors
                     hover:bg-[var(--color-bg-hover)]
                     ${item.dropdown.some((d) => d.href === pathname)
@@ -253,11 +262,13 @@ export default function MainNavbar() {
               <Link
                 key={item.key}
                 href={item.href!}
+                onClick={(e) => handleProtectedNav(e, item.href!, item.requiresAuth)}
                 className={`
                   relative group flex items-center justify-center
-                  w-12 h-12 rounded-xl transition-colors
+                  w-14 h-14 rounded-xl transition-colors
                   hover:bg-[var(--color-bg-hover)]
                   ${pathname === item.href ? 'bg-[var(--color-bg-hover)]' : ''}
+                  ${item.requiresAuth && !isAuthenticated ? 'opacity-60' : ''}
                 `}
               >
                 <NavImage
@@ -265,6 +276,13 @@ export default function MainNavbar() {
                   label={item.label}
                   active={pathname === item.href}
                 />
+
+                {/* Lock badge for protected items */}
+                {item.requiresAuth && !isAuthenticated && (
+                  <span className="absolute bottom-1 right-1 bg-[var(--color-text)] rounded-full p-0.5">
+                    <Lock className="w-2 h-2" style={{ color: 'var(--color-bg)' }} />
+                  </span>
+                )}
 
                 {/* Tooltip */}
                 <span
@@ -276,7 +294,9 @@ export default function MainNavbar() {
                   "
                   style={{ background: 'var(--color-text)', color: 'var(--color-bg)' }}
                 >
-                  {item.label}
+                  {item.requiresAuth && !isAuthenticated
+                    ? `🔒 ${item.label}`
+                    : item.label}
                   <span
                     className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 rotate-45"
                     style={{ background: 'var(--color-text)' }}
@@ -288,7 +308,7 @@ export default function MainNavbar() {
         </nav>
 
         {/* ───── Right actions ───── */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
 
           <LanguageSwitcher variant="icon" className="hidden sm:flex" />
 
@@ -321,7 +341,7 @@ export default function MainNavbar() {
               <div className="relative" ref={userMenuRef}>
                 <button
                   onClick={() => setUserMenuOpen(!userMenuOpen)}
-                  className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-xl hover:bg-[var(--color-bg-hover)] transition-colors"
+                  className="flex items-center gap-1.5 pl-1 pr-1.5 py-1 rounded-xl hover:bg-[var(--color-bg-hover)] transition-colors"
                 >
                   <img
                     src={
@@ -384,7 +404,6 @@ export default function MainNavbar() {
                         {t.nav.settings}
                       </Link>
 
-                      {/* Admin panel — visible for admin roles OR the specific email */}
                       {isAdmin && (
                         <Link
                           href="/admin"
@@ -486,22 +505,23 @@ export default function MainNavbar() {
                     <Link
                       key={item.key}
                       href={item.href!}
+                      onClick={(e) => {
+                        handleProtectedNav(e, item.href!, item.requiresAuth);
+                        if (!item.requiresAuth || isAuthenticated) setMobileOpen(false);
+                      }}
                       className={`
                         flex items-center gap-3 px-3 py-2.5 rounded-xl
                         transition-colors hover:bg-[var(--color-bg-hover)]
                         ${pathname === item.href ? 'bg-[var(--color-bg-hover)]' : ''}
+                        ${item.requiresAuth && !isAuthenticated ? 'opacity-60' : ''}
                       `}
-                      onClick={() => setMobileOpen(false)}
                     >
-                      {/* Mobile image — native colors, no filter */}
                       <span
                         className="relative flex-shrink-0 rounded-lg overflow-hidden"
                         style={{
                           width: 36,
                           height: 36,
-                          background: pathname === item.href
-                            ? 'var(--color-brand-soft, rgba(107,70,193,0.15))'
-                            : 'var(--color-bg-hover)',
+                          background: 'transparent',
                         }}
                       >
                         <Image
@@ -510,10 +530,7 @@ export default function MainNavbar() {
                           fill
                           sizes="36px"
                           className="object-cover"
-                          style={{
-                            padding: 6,
-                            filter: 'none', // ← native image colors always
-                          }}
+                          style={{ filter: 'none' }}
                         />
                       </span>
 
@@ -528,12 +545,17 @@ export default function MainNavbar() {
                         {item.label}
                       </span>
 
-                      {pathname === item.href && (
+                      {item.requiresAuth && !isAuthenticated ? (
+                        <span className="ml-auto flex items-center gap-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                          <Lock className="w-3 h-3" />
+                          Login
+                        </span>
+                      ) : pathname === item.href ? (
                         <span
                           className="ml-auto w-1.5 h-1.5 rounded-full flex-shrink-0"
                           style={{ background: 'var(--color-brand)' }}
                         />
-                      )}
+                      ) : null}
                     </Link>
                   )
               )}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api, { getAccessToken } from '@/lib/axios';
+import api, { ensureFreshToken, getAccessToken } from '@/lib/axios';
 import { AxiosResponse } from "axios";
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
@@ -82,6 +82,14 @@ function formatNumber(n: number | undefined): string {
   if (n === undefined) return '—';
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
+
+// ─── Retry policy — never retry server errors (5xx) ──────────────────────────
+
+const noServerErrorRetry = (failureCount: number, error: unknown) => {
+  const status = (error as any)?.response?.status;
+  if (status && status >= 500) return false; // ← stops the 500 loop
+  return failureCount < 1;
+};
 
 // ─── Stat Card ────────────────────────────────────────────────────────────────
 
@@ -311,22 +319,30 @@ function ErrorState({ message }: { message: string }) {
 
 export default function AdminDashboard() {
   const qc = useQueryClient();
-  const [tokenReady, setTokenReady] = useState(false);
   const [userSearch, setUserSearch] = useState('');
 
-  // ── Token check ──────────────────────────────────────────────────────────────
+  // ── Token gate: wait for ensureFreshToken before firing any query ─────────
+  // This replaces the old getAccessToken() check which was unreliable on mount.
+  const [tokenReady, setTokenReady] = useState(false);
+
   useEffect(() => {
-    const token = getAccessToken();
-    if (token) {
-      setTokenReady(true);
-    } else {
-      window.location.href = '/login';
-    }
-  }, []);
+    ensureFreshToken()
+      .then(() => {
+        // After refresh attempt, check if we actually have a valid token
+        if (getAccessToken()) {
+          setTokenReady(true);
+        } else {
+          // No token after refresh → redirect to login
+          window.location.href = '/login';
+        }
+      })
+      .catch(() => {
+        window.location.href = '/login';
+      });
+  }, []); // runs once on mount
 
   // ── Queries ──────────────────────────────────────────────────────────────────
 
-  // GET /api/admin/dashboard
   const {
     data: stats,
     isError: statsError,
@@ -336,11 +352,10 @@ export default function AdminDashboard() {
     queryKey: ['admin-stats'],
     queryFn: () => api.get('/admin/dashboard').then((r) => r.data.stats),
     enabled: tokenReady,
-    retry: 1,
+    retry: noServerErrorRetry,   // ← never retry 500s
     staleTime: 30_000,
   });
 
-  // GET /api/admin/users?limit=10
   const {
     data: usersData,
     isError: usersError,
@@ -349,18 +364,16 @@ export default function AdminDashboard() {
     queryKey: ['admin-users'],
     queryFn: () => api.get('/admin/users?limit=10').then((r) => r.data),
     enabled: tokenReady,
-    retry: 1,
+    retry: noServerErrorRetry,   // ← never retry 500s
   });
 
-  // GET /api/admin/delete-requests
   const { data: deleteRequests } = useQuery<{ users: DeleteRequestUser[] }>({
     queryKey: ['delete-requests'],
     queryFn: () => api.get('/admin/delete-requests').then((r) => r.data),
     enabled: tokenReady,
-    retry: 1,
+    retry: noServerErrorRetry,
   });
 
-  // GET /api/admin/org/members/pending
   const { data: orgPending } = useQuery<{ members: OrgMember[] }>({
     queryKey: ['org-pending'],
     queryFn: () =>
@@ -368,12 +381,11 @@ export default function AdminDashboard() {
         .get<{ members: OrgMember[] }>('/admin/org/members/pending')
         .then((r: AxiosResponse<{ members: OrgMember[] }>) => r.data),
     enabled: tokenReady,
-    retry: 1,
+    retry: noServerErrorRetry,
   });
 
   // ── Mutations ─────────────────────────────────────────────────────────────────
 
-  // PATCH /api/admin/users/:id/toggle
   const toggleUserMutation = useMutation({
     mutationFn: (userId: string) => api.patch(`/admin/users/${userId}/toggle`),
     onSuccess: () => {
@@ -383,7 +395,6 @@ export default function AdminDashboard() {
     onError: () => toast.error('Failed to update user status'),
   });
 
-  // DELETE /api/admin/users/:id
   const deleteUserMutation = useMutation({
     mutationFn: (userId: string) => api.delete(`/admin/users/${userId}`),
     onSuccess: () => {
@@ -395,7 +406,6 @@ export default function AdminDashboard() {
     onError: () => toast.error('Failed to delete user'),
   });
 
-  // PATCH /api/admin/org/members/:id/status
   const approveOrgMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       api.patch(`/admin/org/members/${id}/status`, { status }),
@@ -408,6 +418,7 @@ export default function AdminDashboard() {
   });
 
   // ── Filtered users ────────────────────────────────────────────────────────────
+
   const filteredUsers = (usersData?.users ?? []).filter((u) => {
     const q = userSearch.toLowerCase();
     return (
@@ -419,6 +430,7 @@ export default function AdminDashboard() {
   });
 
   // ── Stat cards config ─────────────────────────────────────────────────────────
+
   const statCards: StatCardProps[] = [
     {
       icon: Users,
@@ -489,6 +501,7 @@ export default function AdminDashboard() {
   ];
 
   // ── Loading gate ──────────────────────────────────────────────────────────────
+
   if (!tokenReady) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -497,7 +510,8 @@ export default function AdminDashboard() {
     );
   }
 
-  // ─── Render ────────────────────────────────────────────────────────────────────
+  // ─── Render ───────────────────────────────────────────────────────────────────
+
   return (
     <div className="space-y-6 pb-10">
 
@@ -539,7 +553,7 @@ export default function AdminDashboard() {
       {statsError && (
         <div className="flex items-center gap-2 px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-sm text-red-600 dark:text-red-400">
           <AlertTriangle className="w-4 h-4 shrink-0" />
-          Failed to load dashboard statistics. Check your connection and try refreshing.
+          Failed to load dashboard statistics. Check your server and try refreshing.
         </div>
       )}
 
@@ -627,7 +641,6 @@ export default function AdminDashboard() {
                     key={u._id}
                     className="hover:bg-gray-50/60 dark:hover:bg-gray-800/40 transition-colors"
                   >
-                    {/* Name */}
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2.5">
                         <Avatar name={u.name} />
@@ -636,23 +649,15 @@ export default function AdminDashboard() {
                         </span>
                       </div>
                     </td>
-
-                    {/* Email */}
                     <td className="px-5 py-3.5 text-sm text-gray-400 dark:text-gray-500 max-w-[180px]">
                       <span className="truncate block">{u.email}</span>
                     </td>
-
-                    {/* Role */}
                     <td className="px-5 py-3.5">
                       <RoleBadge role={u.role} />
                     </td>
-
-                    {/* Status */}
                     <td className="px-5 py-3.5">
                       <StatusBadge active={u.isActive} />
                     </td>
-
-                    {/* Actions */}
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2">
                         <button
@@ -696,7 +701,6 @@ export default function AdminDashboard() {
           </table>
         </div>
 
-        {/* Footer row */}
         {!usersLoading && !usersError && (usersData?.users?.length ?? 0) > 0 && (
           <div className="px-5 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
             <p className="text-xs text-gray-400">
@@ -756,9 +760,7 @@ export default function AdminDashboard() {
 
                 <div className="flex gap-2 shrink-0 pt-0.5">
                   <button
-                    onClick={() =>
-                      approveOrgMutation.mutate({ id: m._id, status: 'approved' })
-                    }
+                    onClick={() => approveOrgMutation.mutate({ id: m._id, status: 'approved' })}
                     disabled={approveOrgMutation.isPending}
                     className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 border border-emerald-200 dark:border-emerald-800 rounded-lg font-medium transition-colors disabled:opacity-40"
                   >
@@ -766,9 +768,7 @@ export default function AdminDashboard() {
                     Approve
                   </button>
                   <button
-                    onClick={() =>
-                      approveOrgMutation.mutate({ id: m._id, status: 'rejected' })
-                    }
+                    onClick={() => approveOrgMutation.mutate({ id: m._id, status: 'rejected' })}
                     disabled={approveOrgMutation.isPending}
                     className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 border border-red-200 dark:border-red-800 rounded-lg font-medium transition-colors disabled:opacity-40"
                   >
@@ -816,11 +816,7 @@ export default function AdminDashboard() {
 
                 <button
                   onClick={() => {
-                    if (
-                      confirm(
-                        `Permanently delete ${u.name}'s account?\n\nThis action cannot be undone.`
-                      )
-                    ) {
+                    if (confirm(`Permanently delete ${u.name}'s account?\n\nThis action cannot be undone.`)) {
                       deleteUserMutation.mutate(u._id);
                     }
                   }}
@@ -834,7 +830,6 @@ export default function AdminDashboard() {
             ))}
           </div>
 
-          {/* Warning footer */}
           <div className="px-5 py-3 bg-red-50/50 dark:bg-red-900/10 border-t border-red-100 dark:border-red-900/40">
             <p className="text-xs text-red-500 dark:text-red-400 flex items-center gap-1.5">
               <AlertTriangle className="w-3 h-3 shrink-0" />

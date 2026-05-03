@@ -1,0 +1,550 @@
+'use client';
+
+/**
+ * Admin — Posts Management Table
+ * ================================
+ * Uses GET /posts/feed (existing route)
+ * Edit  → PUT /posts/:id
+ * Delete → DELETE /posts/:id
+ */
+
+import { useState, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import toast from 'react-hot-toast';
+import {
+  Search, Trash2, Pencil, X, RefreshCw,
+  Globe, Users, Lock, MapPin, Filter,
+  ChevronLeft, ChevronRight, AlertTriangle,
+} from 'lucide-react';
+import api from '@/lib/api';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface IPost {
+  _id: string;
+  content?: string;
+  audience: 'public' | 'friends' | 'private';
+  feeling?: string;
+  location?: string;
+  media?: { url: string; type: string }[];
+  author: { _id: string; name: string; avatar?: string };
+  createdAt: string;
+  likesCount?: number;
+  commentsCount?: number;
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const LIMIT = 10;
+
+const AUDIENCE_LABELS: Record<string, {
+  label: string; icon: typeof Globe; color: string;
+}> = {
+  public:  { label: 'পাবলিক',    icon: Globe,  color: 'text-emerald-600 bg-emerald-50 border-emerald-200' },
+  friends: { label: 'বন্ধুরা',   icon: Users,  color: 'text-blue-600   bg-blue-50   border-blue-200'      },
+  private: { label: 'প্রাইভেট', icon: Lock,   color: 'text-gray-600   bg-gray-100  border-gray-200'      },
+};
+
+const FEELINGS_BN = [
+  '😊 খুশি', '😢 দুঃখিত', '😍 প্রেমে',    '🎉 উদযাপন',
+  '😤 রাগান্বিত', '😴 ক্লান্ত', '🤔 ভাবছি', '💪 অনুপ্রাণিত',
+];
+
+// ─── Edit Modal ───────────────────────────────────────────────────────────────
+function EditModal({ post, onClose, onDone }: {
+  post: IPost; onClose: () => void; onDone: (updated: IPost) => void;
+}) {
+  const [content,  setContent]  = useState(post.content  ?? '');
+  const [audience, setAudience] = useState(post.audience);
+  const [feeling,  setFeeling]  = useState(post.feeling  ?? '');
+  const [location, setLocation] = useState(post.location ?? '');
+  const [loading,  setLoading]  = useState(false);
+
+  const handleSave = async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.put(`/posts/${post._id}`, {
+        content, audience, feeling, location,
+      });
+      const updated: IPost = data?.post ?? data;
+      toast.success('পোস্ট আপডেট হয়েছে!');
+      onDone(updated);
+      onClose();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message ?? 'আপডেট ব্যর্থ হয়েছে');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.6)' }}
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <motion.div
+        initial={{ scale: 0.92, opacity: 0 }}
+        animate={{ scale: 1,    opacity: 1 }}
+        exit={{   scale: 0.92, opacity: 0 }}
+        className="card w-full max-w-lg max-h-[90vh] overflow-y-auto"
+      >
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="font-heading font-bold text-xl" style={{ color: 'var(--color-text)' }}>
+            পোস্ট এডিট করুন
+          </h3>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-[var(--color-bg-hover)]">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          {/* Content */}
+          <div>
+            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--color-text)' }}>
+              বিষয়বস্তু
+            </label>
+            <textarea
+              rows={4} value={content}
+              onChange={e => setContent(e.target.value)}
+              placeholder="পোস্টের বিষয়বস্তু..."
+              style={{ resize: 'none' }}
+            />
+          </div>
+
+          {/* Audience */}
+          <div>
+            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--color-text)' }}>
+              দর্শক
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {Object.entries(AUDIENCE_LABELS).map(([val, meta]) => {
+                const Icon = meta.icon;
+                return (
+                  <button key={val} onClick={() => setAudience(val as IPost['audience'])}
+                    className={`flex items-center justify-center gap-1.5 py-2 rounded-xl border text-xs font-semibold transition-all ${
+                      audience === val
+                        ? meta.color + ' border-current'
+                        : 'border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]'
+                    }`}>
+                    <Icon className="w-3.5 h-3.5" /> {meta.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Feeling */}
+          <div>
+            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--color-text)' }}>
+              অনুভূতি
+            </label>
+            <div className="grid grid-cols-4 gap-1.5">
+              {FEELINGS_BN.map(f => (
+                <button key={f} onClick={() => setFeeling(feeling === f ? '' : f)}
+                  className={`py-1.5 px-2 rounded-lg text-xs border transition-all ${
+                    feeling === f
+                      ? 'border-[var(--color-brand)] bg-purple-50 text-purple-700'
+                      : 'border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]'
+                  }`}>
+                  {f}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Location */}
+          <div>
+            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--color-text)' }}>
+              অবস্থান
+            </label>
+            <div className="relative">
+              <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
+                style={{ color: 'var(--color-text-muted)' }} />
+              <input type="text" value={location} onChange={e => setLocation(e.target.value)}
+                placeholder="অবস্থান লিখুন..." className="pl-9" />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-3 mt-5">
+          <button onClick={onClose} className="btn-ghost flex-1 py-2.5" disabled={loading}>বাতিল</button>
+          <button onClick={handleSave} disabled={loading}
+            className="btn-primary flex-1 py-2.5 flex items-center justify-center gap-2">
+            {loading ? '⏳' : <><Pencil className="w-4 h-4" /> সংরক্ষণ করুন</>}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// ─── Delete Confirm Modal ─────────────────────────────────────────────────────
+function DeleteModal({ post, onClose, onDone }: {
+  post: IPost; onClose: () => void; onDone: (id: string) => void;
+}) {
+  const [loading, setLoading] = useState(false);
+
+  const handleDelete = async () => {
+    setLoading(true);
+    try {
+      await api.delete(`/posts/${post._id}`);
+      toast.success('পোস্ট মুছে ফেলা হয়েছে!');
+      onDone(post._id);
+      onClose();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message ?? 'মুছতে ব্যর্থ হয়েছে');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.6)' }}
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <motion.div
+        initial={{ scale: 0.92, opacity: 0 }}
+        animate={{ scale: 1,    opacity: 1 }}
+        exit={{   scale: 0.92, opacity: 0 }}
+        className="card w-full max-w-sm text-center"
+      >
+        <div className="w-14 h-14 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
+          <AlertTriangle className="w-7 h-7 text-red-500" />
+        </div>
+        <h3 className="font-heading font-bold text-xl mb-2" style={{ color: 'var(--color-text)' }}>
+          পোস্ট মুছবেন?
+        </h3>
+        <p className="text-sm mb-1 line-clamp-2 px-2" style={{ color: 'var(--color-text-secondary)' }}>
+          {post.content
+            ? `"${post.content.slice(0, 80)}${post.content.length > 80 ? '…' : ''}"`
+            : 'মিডিয়া পোস্ট'}
+        </p>
+        <p className="text-xs mb-6" style={{ color: 'var(--color-text-muted)' }}>
+          এই কাজটি পূর্বাবস্থায় ফেরানো যাবে না।
+        </p>
+        <div className="flex gap-3">
+          <button onClick={onClose} className="btn-ghost flex-1 py-2.5" disabled={loading}>বাতিল</button>
+          <button onClick={handleDelete} disabled={loading}
+            className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white font-semibold flex items-center justify-center gap-2 transition-all">
+            {loading ? '⏳' : <><Trash2 className="w-4 h-4" /> মুছুন</>}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// ─── Main Admin Posts Page ────────────────────────────────────────────────────
+export default function AdminPostsPage() {
+  const [allPosts, setAllPosts] = useState<IPost[]>([]);
+  const [loading,  setLoading]  = useState(true);
+  const [search,   setSearch]   = useState('');
+  const [audience, setAudience] = useState('');
+  const [page,     setPage]     = useState(1);
+  const [editing,  setEditing]  = useState<IPost | null>(null);
+  const [deleting, setDeleting] = useState<IPost | null>(null);
+
+  // ── Fetch from /feed ───────────────────────────────────────────────────────
+  const fetchPosts = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get('/posts/feed', {
+        params: { page: 1, limit: 200 },
+      });
+
+      // Normalise any response shape
+      let posts: IPost[] = [];
+      if (Array.isArray(data))             posts = data;
+      else if (Array.isArray(data.posts))  posts = data.posts;
+      else if (Array.isArray(data.data))   posts = data.data;
+      else if (Array.isArray(data.feed))   posts = data.feed;
+
+      setAllPosts(posts);
+      setPage(1);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message ?? 'পোস্ট লোড ব্যর্থ হয়েছে');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchPosts(); }, [fetchPosts]);
+
+  // ── Client-side filter ─────────────────────────────────────────────────────
+  const filtered = allPosts.filter(p => {
+    const q = search.toLowerCase();
+    const matchSearch   = !search ||
+      (p.content ?? '').toLowerCase().includes(q) ||
+      (p.author?.name ?? '').toLowerCase().includes(q);
+    const matchAudience = !audience || p.audience === audience;
+    return matchSearch && matchAudience;
+  });
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / LIMIT));
+  const paginated  = filtered.slice((page - 1) * LIMIT, page * LIMIT);
+
+  useEffect(() => { setPage(1); }, [search, audience]);
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
+  const handleUpdated = (updated: IPost) =>
+    setAllPosts(prev => prev.map(p => p._id === updated._id ? updated : p));
+
+  const handleDeleted = (id: string) =>
+    setAllPosts(prev => prev.filter(p => p._id !== id));
+
+  const formatDate = (iso: string) =>
+    new Date(iso).toLocaleDateString('bn-BD', {
+      year: 'numeric', month: 'short', day: 'numeric',
+    });
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+  return (
+    <div className="min-h-screen" style={{ background: 'var(--color-bg-secondary)' }}>
+
+      {/* Header */}
+      <div className="gradient-brand text-white py-8 px-4">
+        <div className="max-w-7xl mx-auto">
+          <h1 className="font-heading font-bold text-2xl mb-1">পোস্ট ম্যানেজমেন্ট</h1>
+          <p className="text-purple-200 text-sm">Harmony Organization — Admin Panel</p>
+          <div className="flex items-center gap-3 mt-4 flex-wrap">
+            <div className="px-4 py-2 rounded-xl bg-white/15">
+              <span className="font-bold text-2xl">{allPosts.length}</span>
+              <span className="text-xs text-purple-200 ml-2">মোট পোস্ট</span>
+            </div>
+            {(search || audience) && (
+              <div className="px-4 py-2 rounded-xl bg-white/15">
+                <span className="font-bold text-2xl">{filtered.length}</span>
+                <span className="text-xs text-purple-200 ml-2">ফিল্টার ফলাফল</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 py-6 space-y-4">
+
+        {/* Filters */}
+        <div className="card p-4">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
+                style={{ color: 'var(--color-text-muted)' }} />
+              <input type="text" placeholder="পোস্ট বা লেখক খুঁজুন..."
+                value={search} onChange={e => setSearch(e.target.value)} className="pl-9 w-full" />
+            </div>
+            <div className="relative">
+              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
+                style={{ color: 'var(--color-text-muted)' }} />
+              <select value={audience} onChange={e => setAudience(e.target.value)}
+                className="pl-9" style={{ minWidth: 160 }}>
+                <option value="">সব দর্শক</option>
+                <option value="public">পাবলিক</option>
+                <option value="friends">বন্ধুরা</option>
+                <option value="private">প্রাইভেট</option>
+              </select>
+            </div>
+            <button onClick={fetchPosts}
+              className="p-2.5 rounded-xl hover:bg-[var(--color-bg-hover)] border transition-colors"
+              style={{ borderColor: 'var(--color-border)' }} title="রিফ্রেশ">
+              <RefreshCw className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
+            </button>
+          </div>
+        </div>
+
+        {/* Table */}
+        <div className="card p-0 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ background: 'var(--color-bg-secondary)', borderBottom: '1px solid var(--color-border)' }}>
+                  {['লেখক', 'বিষয়বস্তু', 'দর্শক', 'মিডিয়া', 'তারিখ', 'অ্যাকশন'].map(h => (
+                    <th key={h}
+                      className={`px-4 py-3 font-semibold text-xs uppercase tracking-wide ${h === 'অ্যাকশন' ? 'text-center' : 'text-left'}`}
+                      style={{ color: 'var(--color-text-muted)' }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {/* Skeleton */}
+                {loading && [...Array(6)].map((_, i) => (
+                  <tr key={i} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                    {[140, 260, 90, 60, 80, 80].map((w, j) => (
+                      <td key={j} className="px-4 py-3">
+                        <div className="h-4 rounded animate-pulse"
+                          style={{ background: 'var(--color-border)', width: w }} />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+
+                {/* Empty */}
+                {!loading && paginated.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="text-center py-16">
+                      <div className="text-5xl mb-3">📭</div>
+                      <p className="font-semibold" style={{ color: 'var(--color-text)' }}>
+                        কোনো পোস্ট পাওয়া যায়নি
+                      </p>
+                      {(search || audience) && (
+                        <button onClick={() => { setSearch(''); setAudience(''); }}
+                          className="mt-3 text-sm underline" style={{ color: 'var(--color-brand)' }}>
+                          ফিল্টার সরান
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                )}
+
+                {/* Rows */}
+                {!loading && paginated.map((post, idx) => {
+                  const meta     = AUDIENCE_LABELS[post.audience] ?? AUDIENCE_LABELS.public;
+                  const Icon     = meta.icon;
+                  const hasMedia = (post.media?.length ?? 0) > 0;
+                  return (
+                    <motion.tr key={post._id}
+                      initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: idx * 0.025 }}
+                      className="hover:bg-[var(--color-bg-hover)] transition-colors"
+                      style={{ borderBottom: '1px solid var(--color-border)' }}>
+
+                      {/* Author */}
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2.5" style={{ minWidth: 140 }}>
+                          <img
+                            src={post.author?.avatar ||
+                              `https://ui-avatars.com/api/?name=${encodeURIComponent(post.author?.name ?? 'U')}&background=6B46C1&color=fff`}
+                            alt="" className="w-8 h-8 rounded-full object-cover shrink-0"
+                          />
+                          <span className="font-medium text-sm truncate"
+                            style={{ color: 'var(--color-text)', maxWidth: 110 }}>
+                            {post.author?.name ?? 'অজানা'}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Content */}
+                      <td className="px-4 py-3" style={{ maxWidth: 300 }}>
+                        {post.content
+                          ? <p className="truncate text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                              {post.content.slice(0, 90)}{post.content.length > 90 ? '…' : ''}
+                            </p>
+                          : <span className="text-xs italic" style={{ color: 'var(--color-text-muted)' }}>
+                              — টেক্সট নেই —
+                            </span>
+                        }
+                        {(post.feeling || post.location) && (
+                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                            {post.feeling && (
+                              <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{post.feeling}</span>
+                            )}
+                            {post.location && (
+                              <span className="text-xs flex items-center gap-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                                <MapPin className="w-3 h-3" /> {post.location}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Audience */}
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${meta.color}`}>
+                          <Icon className="w-3 h-3" /> {meta.label}
+                        </span>
+                      </td>
+
+                      {/* Media */}
+                      <td className="px-4 py-3">
+                        {hasMedia ? (
+                          <div className="flex items-center gap-1">
+                            <img src={post.media![0].url} alt=""
+                              className="w-10 h-10 rounded-lg object-cover" />
+                            {post.media!.length > 1 && (
+                              <span className="text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>
+                                +{post.media!.length - 1}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>—</span>
+                        )}
+                      </td>
+
+                      {/* Date */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                          {formatDate(post.createdAt)}
+                        </span>
+                      </td>
+
+                      {/* Actions */}
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-center gap-1">
+                          <button onClick={() => setEditing(post)} title="এডিট"
+                            className="p-2 rounded-lg transition-colors hover:bg-blue-50 hover:text-blue-600"
+                            style={{ color: 'var(--color-text-muted)' }}>
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => setDeleting(post)} title="মুছুন"
+                            className="p-2 rounded-lg transition-colors hover:bg-red-50 hover:text-red-600"
+                            style={{ color: 'var(--color-text-muted)' }}>
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </motion.tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          {!loading && totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t"
+              style={{ borderColor: 'var(--color-border)' }}>
+              <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                {filtered.length} টি পোস্ট — পৃষ্ঠা {page} / {totalPages}
+              </span>
+              <div className="flex items-center gap-1">
+                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                  className="p-1.5 rounded-lg hover:bg-[var(--color-bg-hover)] disabled:opacity-40 transition-colors">
+                  <ChevronLeft className="w-4 h-4" style={{ color: 'var(--color-text)' }} />
+                </button>
+                {[...Array(totalPages)].map((_, i) => {
+                  const p = i + 1;
+                  if (Math.abs(p - page) === 2 && totalPages > 7)
+                    return <span key={p} className="px-1" style={{ color: 'var(--color-text-muted)' }}>…</span>;
+                  if (totalPages > 7 && p !== 1 && p !== totalPages && Math.abs(p - page) > 1)
+                    return null;
+                  return (
+                    <button key={p} onClick={() => setPage(p)}
+                      className={`w-8 h-8 rounded-lg text-xs font-semibold transition-all ${
+                        p === page ? 'gradient-brand text-white' : 'hover:bg-[var(--color-bg-hover)]'
+                      }`}
+                      style={p !== page ? { color: 'var(--color-text)' } : {}}>
+                      {p}
+                    </button>
+                  );
+                })}
+                <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                  className="p-1.5 rounded-lg hover:bg-[var(--color-bg-hover)] disabled:opacity-40 transition-colors">
+                  <ChevronRight className="w-4 h-4" style={{ color: 'var(--color-text)' }} />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Modals */}
+      <AnimatePresence>
+        {editing  && <EditModal   post={editing}  onClose={() => setEditing(null)}  onDone={handleUpdated} />}
+        {deleting && <DeleteModal post={deleting} onClose={() => setDeleting(null)} onDone={handleDeleted} />}
+      </AnimatePresence>
+    </div>
+  );
+}

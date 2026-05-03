@@ -43,9 +43,8 @@ export default function Hero() {
   ];
 
   const stats = [
-    { value: '10K+', label: 'Members' },
-    { value: '48',   label: 'Districts' },
-    { value: '3',    label: 'Core Pillars' },
+    { value: '2K+', label: 'Members' },
+    { value: '8',   label: 'Districts' },
     { value: '2025', label: 'Founded' },
   ];
 
@@ -164,21 +163,6 @@ export default function Hero() {
                   </span>
                 </div>
               </div>
-            </div>
-
-            {/* Trust badges */}
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { icon: '🌐', label: 'English & বাংলা' },
-                { icon: '🔒', label: 'Secure & Private' },
-                { icon: '⚡', label: 'Realtime Updates' },
-                { icon: '🤝', label: 'Community Driven' },
-              ].map((b) => (
-                <div key={b.label} className="card flex items-center gap-2.5 py-2.5 px-3">
-                  <span style={{ fontSize: '16px' }}>{b.icon}</span>
-                  <span className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>{b.label}</span>
-                </div>
-              ))}
             </div>
           </motion.div>
 

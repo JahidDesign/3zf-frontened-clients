@@ -8,29 +8,73 @@ import api from '@/lib/api';
 import {
   BarChart2, Users, Building2, ShoppingBag, Package, Droplets,
   CalendarDays, BookOpen, Images, Phone, Heart,
-  CreditCard, Menu, X, LogOut, Home, Shield, Crown,
+  CreditCard, Menu, X, LogOut, Home, Shield, Crown, FileText,
 } from 'lucide-react';
 
-// ─── Nav definition ───────────────────────────────────────────
-const nav = [
-  { href: '/admin',               icon: BarChart2,    label: 'Dashboard' },
-  { href: '/admin/users',         icon: Users,        label: 'Users',             badge: 'deleteRequests' },
-  { href: '/admin/organisation',  icon: Building2,    label: 'Organisation',      badge: 'pendingOrgMembers' },
-  { href: '/admin/shop-members',  icon: Crown,        label: 'Shop Members' },
-  { href: '/admin/association',   icon: Heart,        label: 'Association' },
-  { href: '/admin/blood',         icon: Droplets,     label: 'Blood Requests',    badge: 'pendingBloodRequests' },
-  { href: '/admin/products',      icon: Package,      label: 'Products' },
-  { href: '/admin/orders',        icon: ShoppingBag,  label: 'Orders' },
-  { href: '/admin/payments',      icon: CreditCard,   label: 'Payments' },
-  { href: '/admin/events',        icon: CalendarDays, label: 'Events' },
-  { href: '/admin/blogs',         icon: BookOpen,     label: 'Blogs' },
-  { href: '/admin/gallery',       icon: Images,       label: 'Gallery' },
-  { href: '/admin/contact',       icon: Phone,        label: 'Contact' },
+// ─── Dashboard stats shape (from getDashboard controller) ────────────────────
+// stats.users                → User.countDocuments()
+// stats.orgMembers           → OrgMember.countDocuments({ status:'approved' })
+// stats.pendingOrgMembers    → OrgMember.countDocuments({ status:'pending' })   ← badge
+// stats.products             → Product.countDocuments({ isActive:true })
+// stats.orders               → Order.countDocuments()
+// stats.events               → Event.countDocuments({ isPublished:true })
+// stats.blogs                → Blog.countDocuments({ isPublished:true })
+// stats.deleteRequests       → User.countDocuments({ deleteRequested:true })    ← badge
+// stats.pendingBloodRequests → BloodRequest.countDocuments({ status:'pending' }) ← badge
+// stats.gallery              → Gallery.countDocuments({ isPublished:true })
+
+interface DashboardStats {
+  users: number;
+  orgMembers: number;
+  pendingOrgMembers: number;
+  products: number;
+  orders: number;
+  events: number;
+  blogs: number;
+  deleteRequests: number;
+  pendingBloodRequests: number;
+  gallery: number;
+}
+
+// ─── Nav — badge values are keys of DashboardStats ───────────────────────────
+const nav: {
+  href: string;
+  icon: React.ElementType;
+  label: string;
+  badge?: keyof DashboardStats;
+}[] = [
+  { href: '/admin',                icon: BarChart2,    label: 'Dashboard' },
+  { href: '/admin/users',          icon: Users,        label: 'Users',            badge: 'deleteRequests' },
+  { href: '/admin/posts',          icon: FileText,     label: 'Posts' },
+  { href: '/admin/organisation',   icon: Building2,    label: 'Organisation',     badge: 'pendingOrgMembers' },
+  { href: '/admin/org',            icon: Building2,    label: 'Org Members',      badge: 'pendingOrgMembers' },
+  { href: '/admin/donation',       icon: Heart,        label: 'Donation Posts' },
+  { href: '/admin/kyc',            icon: Shield,       label: 'KYC Members' },
+  { href: '/admin/shop-members',   icon: Crown,        label: 'Shop Members' },
+  { href: '/admin/shop',           icon: Crown,        label: 'Shop' },
+  { href: '/admin/association',    icon: Heart,        label: 'Association' },
+  { href: '/admin/blood',          icon: Droplets,     label: 'Blood Requests',   badge: 'pendingBloodRequests' },
+  { href: '/admin/donor/register', icon: Droplets,     label: 'Create Donor' },
+  { href: '/admin/donorlist',      icon: Droplets,     label: 'Donor List' },
+  { href: '/admin/products',       icon: Package,      label: 'Products' },
+  { href: '/admin/orders',         icon: ShoppingBag,  label: 'Orders' },
+  { href: '/admin/payments',       icon: CreditCard,   label: 'Payments' },
+  { href: '/admin/events',         icon: CalendarDays, label: 'Events' },
+  { href: '/admin/blogs',          icon: BookOpen,     label: 'Blogs' },
+  { href: '/admin/gallery',        icon: Images,       label: 'Gallery' },
+  { href: '/admin/contact',        icon: Phone,        label: 'Contact' },
 ];
 
 const ADMIN_EMAIL = 'asadforex2025@gmail.com';
 
-// ─── Loading spinner ──────────────────────────────────────────
+// ─── Never retry 5xx errors ───────────────────────────────────────────────────
+const noServerErrorRetry = (failureCount: number, error: unknown) => {
+  const status = (error as any)?.response?.status;
+  if (status && status >= 500) return false;
+  return failureCount < 1;
+};
+
+// ─── Loading screen ───────────────────────────────────────────────────────────
 function LoadingScreen() {
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-950">
@@ -42,7 +86,7 @@ function LoadingScreen() {
   );
 }
 
-// ─── Sidebar inner component ──────────────────────────────────
+// ─── Sidebar content ──────────────────────────────────────────────────────────
 function SidebarContent({
   pathname,
   stats,
@@ -51,7 +95,7 @@ function SidebarContent({
   onLogout,
 }: {
   pathname: string;
-  stats: Record<string, number> | undefined;
+  stats: DashboardStats | undefined;
   user: { name: string; email?: string; role?: string } | null;
   onClose: () => void;
   onLogout: () => void;
@@ -84,11 +128,13 @@ function SidebarContent({
           const active =
             pathname === item.href ||
             (item.href !== '/admin' && pathname.startsWith(item.href + '/'));
-          const count = item.badge ? (stats?.[item.badge] ?? 0) : 0;
+
+          // Type-safe badge count — key is guaranteed to be keyof DashboardStats
+          const count = item.badge && stats ? (stats[item.badge] ?? 0) : 0;
 
           return (
             <Link
-              key={item.href}
+              key={item.href + item.label}
               href={item.href}
               className={`
                 flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors
@@ -101,7 +147,7 @@ function SidebarContent({
               <span className="flex-1">{item.label}</span>
               {count > 0 && (
                 <span className="min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[11px] flex items-center justify-center font-bold">
-                  {count > 9 ? '9+' : count}
+                  {count > 99 ? '99+' : count}
                 </span>
               )}
             </Link>
@@ -130,7 +176,7 @@ function SidebarContent({
   );
 }
 
-// ─── Main Layout ──────────────────────────────────────────────
+// ─── Main Layout ──────────────────────────────────────────────────────────────
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router   = useRouter();
@@ -138,7 +184,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const { user, logout, isHydrated, isLoading } = useAuthStore();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  // Close drawer on route change
   useEffect(() => { setDrawerOpen(false); }, [pathname]);
 
   const hasAccess =
@@ -146,26 +191,25 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     user?.role === 'superadmin' ||
     user?.email === ADMIN_EMAIL;
 
-  // ─── Redirect logic — isHydrated না হওয়া পর্যন্ত অপেক্ষা করুন ───
   useEffect(() => {
-    if (!isHydrated) return; // store এখনো localStorage থেকে load হয়নি
-
-    if (!user) {
-      router.replace('/login');
-      return;
-    }
-
-    if (!hasAccess) {
-      router.replace('/');
-    }
+    if (!isHydrated) return;
+    if (!user)        { router.replace('/login'); return; }
+    if (!hasAccess)   { router.replace('/'); }
   }, [isHydrated, user, hasAccess, router]);
 
-  // Fetch badge counts — শুধু access থাকলে
-  const { data: stats } = useQuery<Record<string, number>>({
+  // Badge stats — typed, no retry on 500, polling pauses on server error
+  const { data: stats } = useQuery<DashboardStats>({
     queryKey: ['admin-badge-stats'],
     queryFn: () => api.get('/admin/dashboard').then((r) => r.data.stats),
-    refetchInterval: 60_000,
     enabled: !!user && hasAccess,
+    retry: noServerErrorRetry,
+    refetchInterval: (query) => {
+      const status = (query.state.error as any)?.response?.status;
+      if (status && status >= 500) return false; // stop polling when backend is down
+      return 60_000;
+    },
+    refetchOnWindowFocus: false,
+    staleTime: 30_000,
   });
 
   const handleLogout = async () => {
@@ -173,15 +217,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     router.push('/login');
   };
 
-  // ─── Hydration বা loading চলাকালীন spinner দেখান ───────────────
-  if (!isHydrated || isLoading) {
-    return <LoadingScreen />;
-  }
-
-  // ─── Access নেই — redirect হচ্ছে, blank দেখান ─────────────────
-  if (!user || !hasAccess) {
-    return <LoadingScreen />;
-  }
+  if (!isHydrated || isLoading) return <LoadingScreen />;
+  if (!user || !hasAccess)      return <LoadingScreen />;
 
   const pageLabel =
     nav.find(
@@ -199,12 +236,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <div className="flex min-h-screen bg-gray-50 dark:bg-gray-950">
 
-      {/* ── Desktop sidebar ── */}
+      {/* Desktop sidebar */}
       <aside className="hidden lg:flex flex-col w-60 shrink-0 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 sticky top-0 h-screen">
         <SidebarContent {...sidebarProps} />
       </aside>
 
-      {/* ── Mobile drawer ── */}
+      {/* Mobile drawer */}
       {drawerOpen && (
         <div className="fixed inset-0 z-50 lg:hidden flex">
           <div className="w-60 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 h-screen shadow-xl">
@@ -217,12 +254,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
       )}
 
-      {/* ── Main area ── */}
+      {/* Main area */}
       <div className="flex-1 min-w-0 flex flex-col">
-
-        {/* Topbar */}
         <header className="sticky top-0 z-40 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center gap-3">
-
           <button
             onClick={() => setDrawerOpen(true)}
             className="lg:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
@@ -232,9 +266,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </button>
 
           <div className="flex-1">
-            <h1 className="font-semibold text-gray-900 dark:text-white text-sm">
-              {pageLabel}
-            </h1>
+            <h1 className="font-semibold text-gray-900 dark:text-white text-sm">{pageLabel}</h1>
           </div>
 
           <div className="flex items-center gap-2.5">
