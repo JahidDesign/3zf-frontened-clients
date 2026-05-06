@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api, { ensureFreshToken, getAccessToken } from '@/lib/axios';
+import api, { ensureFreshToken, getRefreshToken } from '@/lib/axios';
 import { AxiosResponse } from "axios";
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
@@ -87,7 +87,7 @@ function formatNumber(n: number | undefined): string {
 
 const noServerErrorRetry = (failureCount: number, error: unknown) => {
   const status = (error as any)?.response?.status;
-  if (status && status >= 500) return false; // ← stops the 500 loop
+  if (status && status >= 500) return false;
   return failureCount < 1;
 };
 
@@ -321,27 +321,38 @@ export default function AdminDashboard() {
   const qc = useQueryClient();
   const [userSearch, setUserSearch] = useState('');
 
-  // ── Token gate: wait for ensureFreshToken before firing any query ─────────
-  // This replaces the old getAccessToken() check which was unreliable on mount.
+  // ── Token gate ────────────────────────────────────────────────────────────
+  // Wait for ensureFreshToken before firing any queries.
+  // Only redirect to /login when there are truly no tokens at all.
+  // Network errors, timeouts, and 5xx responses must never trigger a logout.
   const [tokenReady, setTokenReady] = useState(false);
 
   useEffect(() => {
-    ensureFreshToken()
-      .then(() => {
-        // After refresh attempt, check if we actually have a valid token
-        if (getAccessToken()) {
-          setTokenReady(true);
-        } else {
-          // No token after refresh → redirect to login
-          window.location.href = '/login';
-        }
-      })
-      .catch(() => {
-        window.location.href = '/login';
-      });
-  }, []); // runs once on mount
+    let cancelled = false;
 
-  // ── Queries ──────────────────────────────────────────────────────────────────
+    ensureFreshToken().then((hasToken) => {
+      if (cancelled) return;
+
+      if (hasToken) {
+        // Valid token confirmed (existing or just refreshed)
+        setTokenReady(true);
+      } else if (getRefreshToken()) {
+        // ensureFreshToken returned false but a refresh token still exists
+        // → server was temporarily unreachable (network error / 5xx).
+        // Show the dashboard anyway; individual queries will retry on their own.
+        setTokenReady(true);
+      } else {
+        // No access token AND no refresh token → genuinely not logged in
+        window.location.href = '/login';
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // ── Queries ───────────────────────────────────────────────────────────────
 
   const {
     data: stats,
@@ -352,7 +363,7 @@ export default function AdminDashboard() {
     queryKey: ['admin-stats'],
     queryFn: () => api.get('/admin/dashboard').then((r) => r.data.stats),
     enabled: tokenReady,
-    retry: noServerErrorRetry,   // ← never retry 500s
+    retry: noServerErrorRetry,
     staleTime: 30_000,
   });
 
@@ -364,7 +375,7 @@ export default function AdminDashboard() {
     queryKey: ['admin-users'],
     queryFn: () => api.get('/admin/users?limit=10').then((r) => r.data),
     enabled: tokenReady,
-    retry: noServerErrorRetry,   // ← never retry 500s
+    retry: noServerErrorRetry,
   });
 
   const { data: deleteRequests } = useQuery<{ users: DeleteRequestUser[] }>({
@@ -384,7 +395,7 @@ export default function AdminDashboard() {
     retry: noServerErrorRetry,
   });
 
-  // ── Mutations ─────────────────────────────────────────────────────────────────
+  // ── Mutations ─────────────────────────────────────────────────────────────
 
   const toggleUserMutation = useMutation({
     mutationFn: (userId: string) => api.patch(`/admin/users/${userId}/toggle`),
@@ -417,7 +428,7 @@ export default function AdminDashboard() {
     onError: () => toast.error('Failed to update member status'),
   });
 
-  // ── Filtered users ────────────────────────────────────────────────────────────
+  // ── Filtered users ────────────────────────────────────────────────────────
 
   const filteredUsers = (usersData?.users ?? []).filter((u) => {
     const q = userSearch.toLowerCase();
@@ -429,7 +440,7 @@ export default function AdminDashboard() {
     );
   });
 
-  // ── Stat cards config ─────────────────────────────────────────────────────────
+  // ── Stat cards config ─────────────────────────────────────────────────────
 
   const statCards: StatCardProps[] = [
     {
@@ -500,7 +511,7 @@ export default function AdminDashboard() {
     },
   ];
 
-  // ── Loading gate ──────────────────────────────────────────────────────────────
+  // ── Loading gate ──────────────────────────────────────────────────────────
 
   if (!tokenReady) {
     return (
@@ -510,7 +521,7 @@ export default function AdminDashboard() {
     );
   }
 
-  // ─── Render ───────────────────────────────────────────────────────────────────
+  // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-6 pb-10">

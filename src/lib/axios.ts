@@ -7,7 +7,6 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:10000/api'
 const ACCESS_TOKEN_EXPIRES_DAYS  = 365;
 const REFRESH_TOKEN_EXPIRES_DAYS = 365;
 
-// MUST match the `name` field in useAuthStore's persist config.
 const STORAGE_KEY = '3zf-auth';
 
 const api = axios.create({
@@ -52,6 +51,8 @@ export const clearTokens = () => {
   delete api.defaults.headers.common['Authorization'];
 };
 
+// Only force logout when the server explicitly rejects credentials (401/403).
+// Never logout on network errors, timeouts, or 5xx server errors.
 const forceLogout = () => {
   clearTokens();
   toast.error('Session expired. Please log in again.');
@@ -78,27 +79,80 @@ export const getRefreshToken = (): string | null => {
   return null;
 };
 
-// ─── Proactive token refresh on app start ────────────────────────────────────
+// ─── JWT Expiry Check ─────────────────────────────────────────────────────────
 
-let _refreshPromise: Promise<void> | null = null;
+/**
+ * Decodes the JWT payload and checks whether it expires within the next 30 seconds.
+ * Returns true (treat as expired) for any malformed token.
+ */
+const isTokenExpired = (token: string): boolean => {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    // 30-second buffer so we refresh slightly before actual expiry
+    return payload.exp * 1000 < Date.now() + 30_000;
+  } catch {
+    return true;
+  }
+};
 
-export const ensureFreshToken = (): Promise<void> => {
+// ─── Proactive Token Refresh on App Start ────────────────────────────────────
+
+// Shared in-flight promise so concurrent callers share one refresh request.
+// Also used by the response interceptor to avoid a double-refresh race.
+export let _refreshPromise: Promise<boolean> | null = null;
+
+/**
+ * Call this once on app mount before firing any authenticated requests.
+ *
+ * Returns:
+ *   true  — a valid access token is now set (existing or freshly refreshed)
+ *   false — no tokens at all (user is not logged in) OR a network/5xx error
+ *           occurred — caller should show the dashboard anyway and let
+ *           individual queries retry naturally.
+ *
+ * Never throws. Never force-logouts on network errors or 5xx responses.
+ * Only force-logouts when the server explicitly rejects the refresh token
+ * with 401 or 403.
+ */
+export const ensureFreshToken = (): Promise<boolean> => {
+  // Re-use an in-flight refresh instead of firing a second one
   if (_refreshPromise) return _refreshPromise;
 
   const accessToken  = getAccessToken();
   const refreshToken = getRefreshToken();
 
-  if (accessToken)   return Promise.resolve();
-  if (!refreshToken) return Promise.resolve();
+  // Have a valid, non-expired access token → nothing to do
+  if (accessToken && !isTokenExpired(accessToken)) {
+    api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
+    return Promise.resolve(true);
+  }
 
-  // ✅ Fixed: /auth/refresh-token → /auth/refresh
+  // No refresh token at all → user is not logged in
+  if (!refreshToken) return Promise.resolve(false);
+
+  // Access token missing or expired, but we have a refresh token → refresh now
   _refreshPromise = axios
     .post(`${BASE_URL}/auth/refresh`, { refreshToken }, { withCredentials: true })
-    .then(({ data }) => { saveTokens(data.accessToken, data.refreshToken); })
-    .catch((err) => {
-      if ([401, 403].includes(err?.response?.status)) forceLogout();
+    .then(({ data }) => {
+      if (data?.accessToken) {
+        saveTokens(data.accessToken, data.refreshToken ?? refreshToken);
+        return true;
+      }
+      // Server responded but gave no token — treat as "not logged in"
+      return false;
     })
-    .finally(() => { _refreshPromise = null; });
+    .catch((err) => {
+      const status = err?.response?.status;
+      // Server explicitly rejected the refresh token → must logout
+      if (status === 401 || status === 403) {
+        forceLogout();
+      }
+      // Network error, timeout, 5xx, etc. → do NOT logout, let the caller decide
+      return false;
+    })
+    .finally(() => {
+      _refreshPromise = null;
+    }) as Promise<boolean>;
 
   return _refreshPromise;
 };
@@ -128,17 +182,39 @@ api.interceptors.response.use(
     const status = error.response?.status;
     const code   = error.response?.data?.code;
 
-    const isTokenProblem = status === 401 && (code === 'TOKEN_EXPIRED' || code === 'NO_TOKEN');
+    const isTokenProblem =
+      status === 401 &&
+      (code === 'TOKEN_EXPIRED' ||
+       code === 'NO_TOKEN'      ||
+       code === 'INVALID_TOKEN');
 
-    // ✅ Fixed: /auth/refresh-token → /auth/refresh
+    // Not a token problem, already retried, or is the refresh endpoint itself
     if (!isTokenProblem || orig._retry || orig.url?.includes('/auth/refresh')) {
       return Promise.reject(error);
     }
 
+    // ── If ensureFreshToken is already mid-flight, piggyback on it ───────────
+    if (_refreshPromise) {
+      try {
+        const ok = await _refreshPromise;
+        if (!ok) return Promise.reject(error);
+        orig.headers.Authorization = `Bearer ${getAccessToken()}`;
+        return api(orig);
+      } catch {
+        return Promise.reject(error);
+      }
+    }
+
+    // ── Queue subsequent 401s while we refresh ────────────────────────────────
     if (isRefreshing) {
-      return new Promise((resolve, reject) => failedQueue.push({ resolve, reject }))
-        .then(token => { orig.headers.Authorization = `Bearer ${token}`; return api(orig); })
-        .catch(err  => Promise.reject(err));
+      return new Promise((resolve, reject) =>
+        failedQueue.push({ resolve, reject }),
+      )
+        .then((token) => {
+          orig.headers.Authorization = `Bearer ${token}`;
+          return api(orig);
+        })
+        .catch((err) => Promise.reject(err));
     }
 
     orig._retry  = true;
@@ -146,9 +222,12 @@ api.interceptors.response.use(
 
     try {
       const rt = getRefreshToken();
-      if (!rt) { forceLogout(); return Promise.reject(error); }
+      if (!rt) {
+        // No refresh token at all — force logout is appropriate here
+        forceLogout();
+        return Promise.reject(error);
+      }
 
-      // ✅ Fixed: /auth/refresh-token → /auth/refresh
       const { data } = await axios.post(
         `${BASE_URL}/auth/refresh`,
         { refreshToken: rt },
@@ -162,7 +241,12 @@ api.interceptors.response.use(
 
     } catch (err: any) {
       processQueue(err, null);
-      if ([401, 403].includes(err?.response?.status)) forceLogout();
+      const errStatus = err?.response?.status;
+      // Only force logout if server explicitly rejected the refresh token
+      if (errStatus === 401 || errStatus === 403) {
+        forceLogout();
+      }
+      // Network error / 5xx during refresh → reject silently, no logout
       return Promise.reject(err);
     } finally {
       isRefreshing = false;
