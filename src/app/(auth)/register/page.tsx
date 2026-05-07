@@ -18,7 +18,8 @@ import api from '@/lib/api';
 const schema = z.object({
   name:            z.string().min(2, 'Name must be at least 2 characters'),
   email:           z.string().email('Invalid email address'),
-  phone:           z.string().optional(),
+  
+  phone:           z.string().min(10, 'Phone number is required'),
   password:        z.string().min(6, 'Password must be at least 6 characters'),
   confirmPassword: z.string(),
 }).refine(d => d.password === d.confirmPassword, {
@@ -35,21 +36,21 @@ export default function RegisterPage() {
   const router = useRouter();
   const { setAuth } = useAuthStore();
 
-  const [step,          setStep]          = useState<'form' | 'otp'>('form');
-  const [loading,       setLoading]       = useState(false);
-  const [resendLoading, setResendLoading] = useState(false);
-  const [showPass,      setShowPass]      = useState(false);
-  const [userId,        setUserId]        = useState('');
-  const [registeredEmail, setRegisteredEmail] = useState('');
-  const [otp,           setOtp]           = useState(['', '', '', '', '', '']);
-  const [avatar,        setAvatar]        = useState<string | null>(null);
-  const [resendCooldown,setResendCooldown]= useState(0);
+  const [step,             setStep]             = useState<'form' | 'otp'>('form');
+  const [loading,          setLoading]          = useState(false);
+  const [resendLoading,    setResendLoading]    = useState(false);
+  const [showPass,         setShowPass]         = useState(false);
+  const [userId,           setUserId]           = useState('');
+  const [registeredEmail,  setRegisteredEmail]  = useState('');
+  const [otp,              setOtp]              = useState(['', '', '', '', '', '']);
+  const [avatar,           setAvatar]           = useState<string | null>(null);
+  const [resendCooldown,   setResendCooldown]   = useState(0);
 
-  const fileRef       = useRef<HTMLInputElement>(null);
-  const otpRefs       = useRef<(HTMLInputElement | null)[]>([]);
-  const cooldownRef   = useRef<ReturnType<typeof setInterval> | null>(null);
-  const submittedRef  = useRef(false);
-  const verifyingRef  = useRef(false);   // guard against double-verify
+  const fileRef      = useRef<HTMLInputElement>(null);
+  const otpRefs      = useRef<(HTMLInputElement | null)[]>([]);
+  const cooldownRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const submittedRef = useRef(false);
+  const verifyingRef = useRef(false);
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -92,7 +93,6 @@ export default function RegisterPage() {
         setStep('otp');
         startCooldown();
 
-        // Backend may have resent OTP for an existing-but-unverified user
         if (res.data.resent) {
           toast.success('OTP resent — finish verifying your existing account.');
         } else {
@@ -102,26 +102,37 @@ export default function RegisterPage() {
     } catch (err: any) {
       submittedRef.current = false;
       const status  = err.response?.status;
+      // ✅ FIX 2: always read the real message from the server
       const message = err.response?.data?.message;
 
       if (status === 409) {
-        // Email already fully registered → send user to login
-        toast(
-          (t) => (
-            <span className="flex items-center gap-2">
-              <span>Email already registered.</span>
-              <button
-                onClick={() => { router.push('/login'); toast.dismiss(t.id); }}
-                className="underline font-semibold whitespace-nowrap"
-              >
-                Sign in →
-              </button>
-            </span>
-          ),
-          { duration: 6000, icon: '⚠️' },
-        );
+        // ✅ FIX 3: differentiate email conflict vs phone conflict
+        const isPhoneConflict =
+          message?.toLowerCase().includes('phone') ??
+          false;
+
+        if (isPhoneConflict) {
+          // Phone already registered — stay on form so user can change it
+          toast.error(message || 'This phone number is already registered.');
+        } else {
+          // Email already fully registered → send user to login
+          toast(
+            (t) => (
+              <span className="flex items-center gap-2">
+                <span>{message || 'Email already registered.'}</span>
+                <button
+                  onClick={() => { router.push('/login'); toast.dismiss(t.id); }}
+                  className="underline font-semibold whitespace-nowrap"
+                >
+                  Sign in →
+                </button>
+              </span>
+            ),
+            { duration: 6000, icon: '⚠️' },
+          );
+        }
       } else if (status === 429) {
-        toast.error('Too many attempts. Please try again in a few minutes.');
+        toast.error(message || 'Too many attempts. Please try again in a few minutes.');
       } else {
         toast.error(message || 'Registration failed. Please try again.');
       }
@@ -132,8 +143,8 @@ export default function RegisterPage() {
 
   /* ── OTP input handlers ─────────────────────────────────────────────── */
   const handleOtpChange = (index: number, value: string) => {
-    if (value.length > 1)       return;
-    if (!/^\d*$/.test(value))   return;
+    if (value.length > 1)     return;
+    if (!/^\d*$/.test(value)) return;
     const newOtp = [...otp];
     newOtp[index] = value;
     setOtp(newOtp);
@@ -163,7 +174,7 @@ export default function RegisterPage() {
 
   /* ── Step 2: Verify OTP ─────────────────────────────────────────────── */
   const verifyOtp = async (otpString?: string) => {
-    if (verifyingRef.current) return;          // prevent double-fire
+    if (verifyingRef.current) return;
     const otpStr = otpString ?? otp.join('');
     if (otpStr.length !== 6) { toast.error('Enter the complete 6-digit code'); return; }
 
@@ -190,7 +201,6 @@ export default function RegisterPage() {
         toast.error(message || 'Verification failed. Please try again.');
       }
 
-      // Reset OTP fields so user can retry
       setOtp(['', '', '', '', '', '']);
       setTimeout(() => otpRefs.current[0]?.focus(), 50);
     } finally {
@@ -238,8 +248,8 @@ export default function RegisterPage() {
   const goBackToForm = () => {
     setStep('form');
     setOtp(['', '', '', '', '', '']);
-    submittedRef.current  = false;
-    verifyingRef.current  = false;
+    submittedRef.current = false;
+    verifyingRef.current = false;
     if (cooldownRef.current) clearInterval(cooldownRef.current);
     setResendCooldown(0);
   };
@@ -384,10 +394,10 @@ export default function RegisterPage() {
                   {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
                 </div>
 
-                {/* Phone */}
+                {/* ✅ FIX 4: Phone is now required — label updated, no "(Optional)" */}
                 <div>
                   <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--color-text)' }}>
-                    Phone (Optional)
+                    Phone *
                   </label>
                   <div className="relative">
                     <Phone
@@ -402,6 +412,7 @@ export default function RegisterPage() {
                       style={{ paddingLeft: '2.5rem' }}
                     />
                   </div>
+                  {errors.phone && <p className="text-red-500 text-xs mt-1">{errors.phone.message}</p>}
                 </div>
 
                 {/* Password */}
