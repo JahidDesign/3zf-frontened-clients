@@ -3,7 +3,9 @@
 import { motion } from 'framer-motion';
 import { ArrowRight, Check, Zap } from 'lucide-react';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useTheme } from 'next-themes';
+import useAuthStore from '@/store/authStore';
 
 /* ─── data ─────────────────────────────────────────────────────────────── */
 const howItems = [
@@ -64,14 +66,24 @@ const fadeUp = (delay = 0) => ({
   transition: { duration: 0.55, delay, ease: [0.22, 1, 0.36, 1] },
 });
 
-/* ─── ThemeToggle ───────────────────────────────────────────────────────── */
 /* ─── Page ──────────────────────────────────────────────────────────────── */
 export default function ShopPage() {
-  const [dark, setDark] = useState(true);
+  const { theme } = useTheme();
+  const { isAuthenticated } = useAuthStore();
+  const router = useRouter();
 
-  useEffect(() => {
-    document.documentElement.setAttribute('data-hs-theme', dark ? 'dark' : 'light');
-  }, [dark]);
+  // Sync with app theme: dark = true when theme is 'dark'
+  const dark = theme === 'dark';
+
+  // Auth-aware navigation handler
+  const handleNavClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (isAuthenticated) {
+      router.push('/supershop');
+    } else {
+      router.push('/register');
+    }
+  };
 
   return (
     <main className={`hs-root${dark ? ' hs-dark' : ' hs-light'}`}>
@@ -89,10 +101,14 @@ export default function ShopPage() {
             </h1>
             <p className="hs-hero-tag">এটি একটি দোকান নয় — এটি একটি অর্থনৈতিক আন্দোলন</p>
             <div className="hs-btn-row">
-              <Link href="/entrepreneur" className="hs-btn-p">
-                Join Community <ArrowRight size={15} />
-              </Link>
-              <button className="hs-btn-s">Become Seller</button>
+              {/* Auth-aware primary button */}
+              <a href="#" onClick={handleNavClick} className="hs-btn-p">
+                {isAuthenticated ? 'Shop Now' : 'Join Community'} <ArrowRight size={15} />
+              </a>
+              {/* Auth-aware secondary button */}
+              <a href="#" onClick={handleNavClick} className="hs-btn-s">
+                {isAuthenticated ? 'Browse Shop' : 'Register'}
+              </a>
             </div>
           </motion.div>
 
@@ -325,9 +341,14 @@ export default function ShopPage() {
             <br />
             <em>আপনি কি শুধু ক্রেতা হতে চান, নাকি একটি ন্যায্য অর্থনীতির অংশ হতে চান?</em>
           </p>
-          <Link href="/entrepreneur" className="hs-btn-p hs-footer-btn inline-flex items-center gap-2">
-            আজই যুক্ত হোন <ArrowRight size={17} />
-          </Link>
+          {/* Auth-aware footer CTA */}
+          <a
+            href="#"
+            onClick={handleNavClick}
+            className="hs-btn-p hs-footer-btn inline-flex items-center gap-2"
+          >
+            {isAuthenticated ? 'Shop Now' : 'আজই যুক্ত হোন'} <ArrowRight size={17} />
+          </a>
           <div className="hs-copy">
             <Zap size={11} />
             © {new Date().getFullYear()} হারমনি কমিউনিটি শপ — 3ZF Foundation. All Rights Reserved.
@@ -463,7 +484,7 @@ export default function ShopPage() {
           border-radius: .7rem; font-weight: 600; cursor: pointer;
           transition: background .18s, transform .18s, color .3s, border-color .3s;
           font-size: clamp(.75rem,1.9vw,.9rem);
-          padding: clamp(10px,2.2vw,13px) clamp(18px,3.5vw,28px);
+          padding: clamp(10px,2.2vw,13px) clamp(18px,3.5vw,28px); text-decoration: none;
         }
         .hs-btn-s:hover { background: var(--hs-ca); transform: translateY(-2px); }
         .hs-btn-row{ display: flex; flex-wrap: wrap; gap: .65rem; margin-top: 1.5rem; }

@@ -1,5 +1,6 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
@@ -37,7 +38,10 @@ export default function MainNavbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState<string | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { setMounted(true); }, []);
 
   const handleProtectedNav = (
     e: React.MouseEvent,
@@ -451,166 +455,193 @@ export default function MainNavbar() {
         </div>
       </div>
 
-      {/* ───── Mobile Drawer ───── */}
-      <AnimatePresence>
-        {mobileOpen && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.2 }}
-            className="lg:hidden border-t overflow-hidden"
-            style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)' }}
-          >
-            <nav className="p-3 space-y-0.5">
+      {/* ───── Mobile Drawer (rendered via portal outside <header>) ───── */}
+      {mounted && createPortal(
+        <>
+          {/* Backdrop */}
+          <AnimatePresence>
+            {mobileOpen && (
+              <motion.div
+                key="drawer-backdrop"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="lg:hidden fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+                style={{ top: 'var(--navbar-height)' }}
+                onClick={() => setMobileOpen(false)}
+              />
+            )}
+          </AnimatePresence>
 
-              {navItems.map((item) =>
-                item.dropdown
-                  ? item.dropdown.map((d) => (
+          {/* Drawer panel — slides in from the left */}
+          <AnimatePresence>
+            {mobileOpen && (
+              <motion.div
+                key="drawer-panel"
+                initial={{ x: '100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '100%' }}
+                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                className="lg:hidden fixed right-0 bottom-0 z-50 w-72 max-w-[85vw] overflow-y-auto"
+                style={{
+                  top: 'var(--navbar-height)',
+                  background: 'var(--color-bg)',
+                  borderLeft: '1px solid var(--color-border)',
+                }}
+              >
+              <nav className="p-3 space-y-0.5">
+
+                {navItems.map((item) =>
+                  item.dropdown
+                    ? item.dropdown.map((d) => (
+                        <Link
+                          key={d.href}
+                          href={d.href}
+                          className={`
+                            flex items-center gap-3 px-3 py-2.5 rounded-xl
+                            transition-colors hover:bg-[var(--color-bg-hover)]
+                            ${pathname === d.href ? 'bg-[var(--color-bg-hover)]' : ''}
+                          `}
+                          onClick={() => setMobileOpen(false)}
+                        >
+                          <span
+                            className="w-5 h-5 flex items-center justify-center flex-shrink-0 text-xs"
+                            style={{ color: 'var(--color-text-secondary)' }}
+                          >
+                            ↳
+                          </span>
+                          <span
+                            className="text-sm font-medium"
+                            style={{
+                              color: pathname === d.href
+                                ? 'var(--color-brand)'
+                                : 'var(--color-text)',
+                            }}
+                          >
+                            {d.label}
+                          </span>
+                          {pathname === d.href && (
+                            <span
+                              className="ml-auto w-1.5 h-1.5 rounded-full flex-shrink-0"
+                              style={{ background: 'var(--color-brand)' }}
+                            />
+                          )}
+                        </Link>
+                      ))
+                    : (
                       <Link
-                        key={d.href}
-                        href={d.href}
+                        key={item.key}
+                        href={item.href!}
+                        onClick={(e) => {
+                          handleProtectedNav(e, item.href!, item.requiresAuth);
+                          if (!item.requiresAuth || isAuthenticated) setMobileOpen(false);
+                        }}
                         className={`
                           flex items-center gap-3 px-3 py-2.5 rounded-xl
                           transition-colors hover:bg-[var(--color-bg-hover)]
-                          ${pathname === d.href ? 'bg-[var(--color-bg-hover)]' : ''}
+                          ${pathname === item.href ? 'bg-[var(--color-bg-hover)]' : ''}
+                          ${item.requiresAuth && !isAuthenticated ? 'opacity-60' : ''}
                         `}
-                        onClick={() => setMobileOpen(false)}
                       >
                         <span
-                          className="w-5 h-5 flex items-center justify-center flex-shrink-0 text-xs"
-                          style={{ color: 'var(--color-text-secondary)' }}
+                          className="relative flex-shrink-0 rounded-lg overflow-hidden"
+                          style={{
+                            width: 36,
+                            height: 36,
+                            background: 'transparent',
+                          }}
                         >
-                          ↳
+                          <Image
+                            src={item.image}
+                            alt={item.label}
+                            fill
+                            sizes="36px"
+                            className="object-cover"
+                            style={{ filter: 'none' }}
+                          />
                         </span>
+
                         <span
                           className="text-sm font-medium"
                           style={{
-                            color: pathname === d.href
+                            color: pathname === item.href
                               ? 'var(--color-brand)'
                               : 'var(--color-text)',
                           }}
                         >
-                          {d.label}
+                          {item.label}
                         </span>
-                        {pathname === d.href && (
+
+                        {item.requiresAuth && !isAuthenticated ? (
+                          <span className="ml-auto flex items-center gap-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                            <Lock className="w-3 h-3" />
+                            Login
+                          </span>
+                        ) : pathname === item.href ? (
                           <span
                             className="ml-auto w-1.5 h-1.5 rounded-full flex-shrink-0"
                             style={{ background: 'var(--color-brand)' }}
                           />
-                        )}
+                        ) : null}
                       </Link>
-                    ))
-                  : (
-                    <Link
-                      key={item.key}
-                      href={item.href!}
-                      onClick={(e) => {
-                        handleProtectedNav(e, item.href!, item.requiresAuth);
-                        if (!item.requiresAuth || isAuthenticated) setMobileOpen(false);
-                      }}
-                      className={`
-                        flex items-center gap-3 px-3 py-2.5 rounded-xl
-                        transition-colors hover:bg-[var(--color-bg-hover)]
-                        ${pathname === item.href ? 'bg-[var(--color-bg-hover)]' : ''}
-                        ${item.requiresAuth && !isAuthenticated ? 'opacity-60' : ''}
-                      `}
-                    >
-                      <span
-                        className="relative flex-shrink-0 rounded-lg overflow-hidden"
-                        style={{
-                          width: 36,
-                          height: 36,
-                          background: 'transparent',
-                        }}
-                      >
-                        <Image
-                          src={item.image}
-                          alt={item.label}
-                          fill
-                          sizes="36px"
-                          className="object-cover"
-                          style={{ filter: 'none' }}
-                        />
-                      </span>
+                    )
+                )}
 
-                      <span
-                        className="text-sm font-medium"
-                        style={{
-                          color: pathname === item.href
-                            ? 'var(--color-brand)'
-                            : 'var(--color-text)',
-                        }}
-                      >
-                        {item.label}
-                      </span>
+                {/* Divider */}
+                <div className="my-2 border-t" style={{ borderColor: 'var(--color-border)' }} />
 
-                      {item.requiresAuth && !isAuthenticated ? (
-                        <span className="ml-auto flex items-center gap-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                          <Lock className="w-3 h-3" />
-                          Login
-                        </span>
-                      ) : pathname === item.href ? (
-                        <span
-                          className="ml-auto w-1.5 h-1.5 rounded-full flex-shrink-0"
-                          style={{ background: 'var(--color-brand)' }}
-                        />
-                      ) : null}
-                    </Link>
-                  )
-              )}
-
-              {/* Divider */}
-              <div className="my-2 border-t" style={{ borderColor: 'var(--color-border)' }} />
-
-              {/* Language + theme */}
-              <div className="flex items-center gap-2 px-3 py-1">
-                <LanguageSwitcher variant="badge" />
-                <button
-                  onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                  className="ml-auto btn-ghost w-9 h-9 flex items-center justify-center p-0"
-                >
-                  {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-                </button>
-              </div>
-
-              {/* Mobile auth buttons */}
-              {!isAuthenticated && (
-                <div className="flex gap-2 px-3 pt-1">
-                  <Link
-                    href="/login"
-                    className="btn-secondary text-sm py-2 flex-1 text-center"
-                    onClick={() => setMobileOpen(false)}
+                {/* Language + theme */}
+                <div className="flex items-center gap-2 px-3 py-1">
+                  <LanguageSwitcher variant="badge" />
+                  <button
+                    onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                    className="ml-auto btn-ghost w-9 h-9 flex items-center justify-center p-0"
                   >
-                    {t.nav.login}
-                  </Link>
-                  <Link
-                    href="/register"
-                    className="btn-primary text-sm py-2 flex-1 text-center"
-                    onClick={() => setMobileOpen(false)}
-                  >
-                    {t.nav.register}
-                  </Link>
+                    {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                  </button>
                 </div>
-              )}
 
-              {/* Mobile admin link */}
-              {isAuthenticated && isAdmin && (
-                <Link
-                  href="/admin"
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors hover:bg-[var(--color-bg-hover)]"
-                  style={{ color: 'var(--color-brand)' }}
-                  onClick={() => setMobileOpen(false)}
-                >
-                  <span className="text-base">⚡</span>
-                  <span className="text-sm font-medium">{t.nav.adminPanel}</span>
-                </Link>
-              )}
+                {/* Mobile auth buttons */}
+                {!isAuthenticated && (
+                  <div className="flex gap-2 px-3 pt-1">
+                    <Link
+                      href="/login"
+                      className="btn-secondary text-sm py-2 flex-1 text-center"
+                      onClick={() => setMobileOpen(false)}
+                    >
+                      {t.nav.login}
+                    </Link>
+                    <Link
+                      href="/register"
+                      className="btn-primary text-sm py-2 flex-1 text-center"
+                      onClick={() => setMobileOpen(false)}
+                    >
+                      {t.nav.register}
+                    </Link>
+                  </div>
+                )}
 
-            </nav>
-          </motion.div>
-        )}
-      </AnimatePresence>
+                {/* Mobile admin link */}
+                {isAuthenticated && isAdmin && (
+                  <Link
+                    href="/admin"
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors hover:bg-[var(--color-bg-hover)]"
+                    style={{ color: 'var(--color-brand)' }}
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    <span className="text-base">⚡</span>
+                    <span className="text-sm font-medium">{t.nav.adminPanel}</span>
+                  </Link>
+                )}
+
+              </nav>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        </>,
+        document.body
+      )}
     </header>
   );
 }

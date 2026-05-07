@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { Inter, Sora } from 'next/font/google';
 import { Toaster } from 'react-hot-toast';
-import { ThemeProvider } from 'next-themes';
+import { ThemeProvider } from "@/components/providers/ThemeProvider";
 import QueryProvider from '@/components/providers/QueryProvider';
 import '../styles/globals.css';
 
