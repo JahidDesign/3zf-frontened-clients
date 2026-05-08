@@ -18,7 +18,6 @@ import api from '@/lib/api';
 const schema = z.object({
   name:            z.string().min(2, 'Name must be at least 2 characters'),
   email:           z.string().email('Invalid email address'),
-  
   phone:           z.string().min(10, 'Phone number is required'),
   password:        z.string().min(6, 'Password must be at least 6 characters'),
   confirmPassword: z.string(),
@@ -36,15 +35,15 @@ export default function RegisterPage() {
   const router = useRouter();
   const { setAuth } = useAuthStore();
 
-  const [step,             setStep]             = useState<'form' | 'otp'>('form');
-  const [loading,          setLoading]          = useState(false);
-  const [resendLoading,    setResendLoading]    = useState(false);
-  const [showPass,         setShowPass]         = useState(false);
-  const [userId,           setUserId]           = useState('');
-  const [registeredEmail,  setRegisteredEmail]  = useState('');
-  const [otp,              setOtp]              = useState(['', '', '', '', '', '']);
-  const [avatar,           setAvatar]           = useState<string | null>(null);
-  const [resendCooldown,   setResendCooldown]   = useState(0);
+  const [step,            setStep]            = useState<'form' | 'otp'>('form');
+  const [loading,         setLoading]         = useState(false);
+  const [resendLoading,   setResendLoading]   = useState(false);
+  const [showPass,        setShowPass]        = useState(false);
+  const [userId,          setUserId]          = useState('');
+  const [registeredEmail, setRegisteredEmail] = useState('');
+  const [otp,             setOtp]             = useState(['', '', '', '', '', '']);
+  const [avatar,          setAvatar]          = useState<string | null>(null);
+  const [resendCooldown,  setResendCooldown]  = useState(0);
 
   const fileRef      = useRef<HTMLInputElement>(null);
   const otpRefs      = useRef<(HTMLInputElement | null)[]>([]);
@@ -57,8 +56,8 @@ export default function RegisterPage() {
   });
 
   /* ── Cooldown timer ─────────────────────────────────────────────────── */
-  const startCooldown = () => {
-    setResendCooldown(RESEND_COOLDOWN_SEC);
+  const startCooldown = (seconds = RESEND_COOLDOWN_SEC) => {
+    setResendCooldown(seconds);
     if (cooldownRef.current) clearInterval(cooldownRef.current);
     cooldownRef.current = setInterval(() => {
       setResendCooldown(prev => {
@@ -72,7 +71,7 @@ export default function RegisterPage() {
 
   /* ── Auto-verify when all 6 digits filled ───────────────────────────── */
   useEffect(() => {
-    if (step === 'otp' && otp.every(d => d !== '')) {
+    if (step === 'otp' && otp.every(d => d !== '') && !verifyingRef.current) {
       verifyOtp(otp.join(''));
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -102,20 +101,13 @@ export default function RegisterPage() {
     } catch (err: any) {
       submittedRef.current = false;
       const status  = err.response?.status;
-      // ✅ FIX 2: always read the real message from the server
       const message = err.response?.data?.message;
 
       if (status === 409) {
-        // ✅ FIX 3: differentiate email conflict vs phone conflict
-        const isPhoneConflict =
-          message?.toLowerCase().includes('phone') ??
-          false;
-
+        const isPhoneConflict = message?.toLowerCase().includes('phone') ?? false;
         if (isPhoneConflict) {
-          // Phone already registered — stay on form so user can change it
           toast.error(message || 'This phone number is already registered.');
         } else {
-          // Email already fully registered → send user to login
           toast(
             (t) => (
               <span className="flex items-center gap-2">
@@ -132,7 +124,18 @@ export default function RegisterPage() {
           );
         }
       } else if (status === 429) {
-        toast.error(message || 'Too many attempts. Please try again in a few minutes.');
+        // ✅ Server sends waitSec — start the real cooldown timer and redirect to OTP
+        const waitSec = err.response?.data?.waitSec;
+        const uid     = err.response?.data?.userId;
+        if (uid) {
+          setUserId(uid);
+          setRegisteredEmail(data.email);
+          setStep('otp');
+          startCooldown(waitSec ?? RESEND_COOLDOWN_SEC);
+          toast.error(message || 'OTP already sent. Please wait before requesting a new one.');
+        } else {
+          toast.error(message || 'Too many attempts. Please try again later.');
+        }
       } else {
         toast.error(message || 'Registration failed. Please try again.');
       }
@@ -224,8 +227,11 @@ export default function RegisterPage() {
     } catch (err: any) {
       const status  = err.response?.status;
       const message = err.response?.data?.message;
+      const waitSec = err.response?.data?.waitSec;
       if (status === 429) {
-        toast.error('Too many resend requests. Please wait.');
+        // ✅ Use server's actual wait time instead of generic message
+        if (waitSec) startCooldown(waitSec);
+        toast.error(message || 'Too many resend requests. Please wait.');
       } else {
         toast.error(message || 'Failed to resend OTP. Try again.');
       }
@@ -394,7 +400,7 @@ export default function RegisterPage() {
                   {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
                 </div>
 
-                {/* ✅ FIX 4: Phone is now required — label updated, no "(Optional)" */}
+                {/* Phone */}
                 <div>
                   <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--color-text)' }}>
                     Phone *
@@ -531,10 +537,11 @@ export default function RegisterPage() {
                   ))}
                 </div>
 
+                {/* ✅ Manual verify button — always clickable even if not all digits filled */}
                 <button
                   onClick={() => verifyOtp()}
-                  disabled={loading}
-                  className="btn-primary w-full py-3 flex items-center justify-center gap-2"
+                  disabled={loading || otp.join('').length !== 6}
+                  className="btn-primary w-full py-3 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading
                     ? <Spinner />
