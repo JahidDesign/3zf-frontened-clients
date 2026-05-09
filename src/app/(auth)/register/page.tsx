@@ -1,853 +1,686 @@
 'use client';
-
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api, { ensureFreshToken, getRefreshToken } from '@/lib/axios';
-import { AxiosResponse } from 'axios';
-import { useState, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import {
-  Users,
-  ShoppingBag,
-  CalendarDays,
-  BookOpen,
-  Building2,
-  Trash2,
-  CheckCircle,
-  XCircle,
-  AlertTriangle,
-  Package,
-  Crown,
-  TrendingUp,
-  Loader2,
-  ExternalLink,
-  MoreHorizontal,
-  Search,
-  RefreshCw,
-  ChevronRight,
+  Eye, EyeOff, User, Mail, Lock, Phone,
+  Camera, ArrowRight, CheckCircle, RefreshCw,
 } from 'lucide-react';
-import Link from 'next/link';
 import useAuthStore from '@/store/authStore';
+import api from '@/lib/api';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+/* ─── Validation schema ─────────────────────────────────────────────────── */
+const schema = z.object({
+  name:            z.string().min(2, 'Name must be at least 2 characters'),
+  email:           z.string().email('Invalid email address'),
+  confirmEmail:    z.string().email('Invalid email address'),
+  phone:           z.string().min(10, 'Phone number is required'),
+  password:        z.string().min(6, 'Password must be at least 6 characters'),
+  confirmPassword: z.string(),
+}).refine(d => d.email === d.confirmEmail, {
+  message: "Email addresses don't match",
+  path: ['confirmEmail'],
+}).refine(d => d.password === d.confirmPassword, {
+  message: "Passwords don't match",
+  path: ['confirmPassword'],
+});
 
-interface User {
-  _id: string;
-  name: string;
-  email: string;
-  role: string;
-  isActive: boolean;
-  avatar?: string;
-}
+type FormData = z.infer<typeof schema>;
 
-interface OrgMember {
-  _id: string;
-  name: string;
-  phone: string;
-  district: string;
-  nidDocument?: { url: string };
-}
+const RESEND_COOLDOWN_SEC = 60;
+const OTP_LENGTH = 6;
 
-interface DeleteRequestUser {
-  _id: string;
-  name: string;
-  email: string;
-  deleteRequest?: { reason: string };
-}
+/* ─── Component ─────────────────────────────────────────────────────────── */
+export default function RegisterPage() {
+  const router = useRouter();
+  const { setAuth } = useAuthStore();
 
-interface DashboardStats {
-  users: number;
-  orgMembers: number;
-  products: number;
-  orders: number;
-  events: number;
-  blogs: number;
-  deleteRequests: number;
-  pendingOrgMembers: number;
-  pendingBloodRequests?: number;
-  payments?: number;
-  gallery?: number;
-}
+  const [step,            setStep]            = useState<'form' | 'otp'>('form');
+  const [loading,         setLoading]         = useState(false);
+  const [resendLoading,   setResendLoading]   = useState(false);
+  const [showPass,        setShowPass]        = useState(false);
+  const [showConfirmPass, setShowConfirmPass] = useState(false);
+  const [userId,          setUserId]          = useState('');
+  const [registeredEmail, setRegisteredEmail] = useState('');
+  const [otp,             setOtp]             = useState<string[]>(Array(OTP_LENGTH).fill(''));
+  const [avatar,          setAvatar]          = useState<string | null>(null);
+  const [resendCooldown,  setResendCooldown]  = useState(0);
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+  const fileRef      = useRef<HTMLInputElement>(null);
+  const otpRefs      = useRef<(HTMLInputElement | null)[]>([]);
+  const cooldownRef  = useRef<ReturnType<typeof setInterval> | null>(null);
 
-function getInitials(name: string) {
-  return name
-    .split(' ')
-    .map((n) => n[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
-}
+  // Single source of truth for in-flight state — avoids double-submits
+  const isSubmittingRef = useRef(false);
+  const isVerifyingRef  = useRef(false);
 
-function formatNumber(n: number | undefined): string {
-  if (n === undefined) return '—';
-  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
-}
+  const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
+    resolver: zodResolver(schema),
+  });
 
-// Role helpers
-type Role = 'superadmin' | 'admin' | 'moderator' | 'user';
-
-const isSuperAdmin  = (role: Role) => role === 'superadmin';
-const isAdminOrSuper = (role: Role) => role === 'superadmin' || role === 'admin';
-
-// ─── Retry policy — never retry server errors (5xx) ──────────────────────────
-
-const noServerErrorRetry = (failureCount: number, error: unknown) => {
-  const status = (error as any)?.response?.status;
-  if (status && status >= 500) return false;
-  return failureCount < 1;
-};
-
-// ─── Stat Card ────────────────────────────────────────────────────────────────
-
-interface StatCardProps {
-  icon: React.ElementType;
-  label: string;
-  value: number | undefined;
-  accent: string;
-  accentBg: string;
-  trend?: string;
-  trendUp?: boolean;
-  href?: string;
-  urgent?: boolean;
-}
-
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  accent,
-  accentBg,
-  trend,
-  trendUp = true,
-  href,
-  urgent,
-}: StatCardProps) {
-  const inner = (
-    <div
-      className={`
-        relative overflow-hidden rounded-2xl border transition-all duration-200
-        hover:shadow-lg hover:-translate-y-0.5 cursor-pointer group
-        ${urgent
-          ? 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-900/50'
-          : 'bg-white dark:bg-gray-900 border-gray-100 dark:border-gray-800'
-        }
-      `}
-    >
-      <div
-        className={`absolute -top-4 -right-4 w-16 h-16 rounded-full opacity-10 transition-opacity group-hover:opacity-20 ${accentBg}`}
-      />
-      <div className="p-5">
-        <div className="flex items-start justify-between gap-2 mb-3">
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${accentBg} bg-opacity-15`}>
-            <Icon className={`w-4.5 h-4.5 ${accent}`} strokeWidth={1.8} />
-          </div>
-          {urgent && value !== undefined && value > 0 && (
-            <span className="text-xs font-semibold text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/40 px-2 py-0.5 rounded-full">
-              Action needed
-            </span>
-          )}
-        </div>
-        <p className="text-xs font-medium text-gray-400 dark:text-gray-500 tracking-wide uppercase mb-1">
-          {label}
-        </p>
-        <p className={`text-2xl font-bold tabular-nums ${urgent && (value ?? 0) > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>
-          {value === undefined
-            ? <span className="text-gray-200 dark:text-gray-700">—</span>
-            : formatNumber(value)}
-        </p>
-        {trend && (
-          <p className={`text-xs font-medium mt-1.5 flex items-center gap-1 ${trendUp ? 'text-emerald-500' : 'text-red-400'}`}>
-            <TrendingUp className="w-3 h-3" />
-            {trend}
-          </p>
-        )}
-      </div>
-    </div>
-  );
-
-  return href ? <Link href={href} className="block">{inner}</Link> : inner;
-}
-
-// ─── Role Badge ───────────────────────────────────────────────────────────────
-
-function RoleBadge({ role }: { role: string }) {
-  const variants: Record<string, string> = {
-    superadmin: 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300',
-    admin:      'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300',
-    moderator:  'bg-blue-100  dark:bg-blue-900/30   text-blue-700   dark:text-blue-300',
-    user:       'bg-gray-100  dark:bg-gray-800       text-gray-600   dark:text-gray-400',
-  };
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold tracking-wide ${variants[role] ?? variants.user}`}>
-      {role}
-    </span>
-  );
-}
-
-// ─── Status Badge ─────────────────────────────────────────────────────────────
-
-function StatusBadge({ active }: { active: boolean }) {
-  return (
-    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-semibold ${
-      active
-        ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400'
-        : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'
-    }`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-emerald-500' : 'bg-red-500'}`} />
-      {active ? 'Active' : 'Suspended'}
-    </span>
-  );
-}
-
-// ─── Avatar ───────────────────────────────────────────────────────────────────
-
-const AVATAR_COLORS = [
-  'from-violet-400 to-violet-600',
-  'from-blue-400 to-blue-600',
-  'from-emerald-400 to-emerald-600',
-  'from-rose-400 to-rose-600',
-  'from-amber-400 to-amber-500',
-  'from-teal-400 to-teal-600',
-];
-
-function Avatar({ name, size = 'sm' }: { name: string; size?: 'sm' | 'md' }) {
-  const idx = name.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % AVATAR_COLORS.length;
-  const dim = size === 'sm' ? 'w-8 h-8 text-xs' : 'w-10 h-10 text-sm';
-  return (
-    <div className={`${dim} rounded-full bg-gradient-to-br ${AVATAR_COLORS[idx]} flex items-center justify-center text-white font-bold shrink-0 select-none`}>
-      {getInitials(name)}
-    </div>
-  );
-}
-
-// ─── Section Header ───────────────────────────────────────────────────────────
-
-function SectionHeader({
-  icon: Icon,
-  title,
-  badge,
-  badgeVariant = 'default',
-  href,
-  iconColor,
-}: {
-  icon: React.ElementType;
-  title: string;
-  badge?: string | number;
-  badgeVariant?: 'default' | 'warning' | 'danger';
-  href?: string;
-  iconColor?: string;
-}) {
-  const badgeClasses = {
-    default: 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400',
-    warning: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
-    danger:  'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400',
-  };
-  return (
-    <div className="px-5 py-3.5 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
-      <h2 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2 text-sm">
-        <Icon className={`w-4 h-4 ${iconColor ?? 'text-gray-400'}`} strokeWidth={1.8} />
-        {title}
-      </h2>
-      <div className="flex items-center gap-2">
-        {badge !== undefined && (
-          <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${badgeClasses[badgeVariant]}`}>
-            {badge}
-          </span>
-        )}
-        {href && (
-          <Link
-            href={href}
-            className="text-xs text-indigo-600 dark:text-indigo-400 font-medium hover:underline flex items-center gap-0.5"
-          >
-            View all
-            <ChevronRight className="w-3 h-3" />
-          </Link>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Empty State ──────────────────────────────────────────────────────────────
-
-function EmptyState({ message }: { message: string }) {
-  return (
-    <div className="py-12 text-center text-sm text-gray-400 dark:text-gray-500">
-      {message}
-    </div>
-  );
-}
-
-// ─── Error State ──────────────────────────────────────────────────────────────
-
-function ErrorState({ message }: { message: string }) {
-  return (
-    <div className="py-8 text-center text-sm text-red-400">
-      {message}
-    </div>
-  );
-}
-
-// ─── Main Dashboard ───────────────────────────────────────────────────────────
-
-export default function AdminDashboard() {
-  const qc = useQueryClient();
-  const [userSearch, setUserSearch] = useState('');
-
-  // ── Current user role (for permission-aware UI) ───────────────────────────
-  const { user: currentUser } = useAuthStore();
-  const currentRole = (currentUser?.role ?? 'moderator') as Role;
-
-  // ── Token gate ────────────────────────────────────────────────────────────
-  const [tokenReady, setTokenReady] = useState(false);
-
+  /* ── Cleanup on unmount ─────────────────────────────────────────────── */
   useEffect(() => {
-    let cancelled = false;
-
-    ensureFreshToken().then((hasToken) => {
-      if (cancelled) return;
-      if (hasToken) {
-        setTokenReady(true);
-      } else if (getRefreshToken()) {
-        // Network/5xx error — show dashboard anyway, queries will retry
-        setTokenReady(true);
-      } else {
-        // No tokens at all → genuinely not logged in
-        window.location.href = '/login';
-      }
-    });
-
-    return () => { cancelled = true; };
+    return () => {
+      if (cooldownRef.current) clearInterval(cooldownRef.current);
+    };
   }, []);
 
-  // ── Queries ───────────────────────────────────────────────────────────────
+  /* ── Cooldown timer ─────────────────────────────────────────────────── */
+  const startCooldown = useCallback((seconds = RESEND_COOLDOWN_SEC) => {
+    if (cooldownRef.current) clearInterval(cooldownRef.current);
+    setResendCooldown(seconds);
+    cooldownRef.current = setInterval(() => {
+      setResendCooldown(prev => {
+        if (prev <= 1) {
+          clearInterval(cooldownRef.current!);
+          cooldownRef.current = null;
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, []);
 
-  const {
-    data: stats,
-    isError: statsError,
-    isLoading: statsLoading,
-    refetch: refetchStats,
-  } = useQuery<DashboardStats>({
-    queryKey: ['admin-stats'],
-    queryFn: () => api.get('/admin/dashboard').then((r) => r.data.stats),
-    enabled: tokenReady,
-    retry: noServerErrorRetry,
-    staleTime: 30_000,
-  });
+  /* ── Step 1: Register ───────────────────────────────────────────────── */
+  const onSubmit = async (data: FormData) => {
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+    setLoading(true);
 
-  const {
-    data: usersData,
-    isError: usersError,
-    isLoading: usersLoading,
-  } = useQuery<{ users: User[] }>({
-    queryKey: ['admin-users'],
-    queryFn: () => api.get('/admin/users?limit=10').then((r) => r.data),
-    enabled: tokenReady,
-    retry: noServerErrorRetry,
-  });
+    try {
+      // FIX: strip BOTH confirmEmail and confirmPassword before sending
+      const { confirmEmail: _ce, confirmPassword: _cp, ...registerData } = data;
 
-  const { data: deleteRequests } = useQuery<{ users: DeleteRequestUser[] }>({
-    queryKey: ['delete-requests'],
-    queryFn: () => api.get('/admin/delete-requests').then((r) => r.data),
-    enabled: tokenReady && isAdminOrSuper(currentRole), // moderator has no delete power
-    retry: noServerErrorRetry,
-  });
+      const res = await api.post('/auth/register', { ...registerData, avatar });
 
-  const { data: orgPending } = useQuery<{ members: OrgMember[] }>({
-    queryKey: ['org-pending'],
-    queryFn: () =>
-      api
-        .get<{ members: OrgMember[] }>('/admin/org/members/pending')
-        .then((r: AxiosResponse<{ members: OrgMember[] }>) => r.data),
-    enabled: tokenReady,
-    retry: noServerErrorRetry,
-  });
-
-  // ── Mutations ─────────────────────────────────────────────────────────────
-
-  const toggleUserMutation = useMutation({
-    mutationFn: (userId: string) => api.patch(`/admin/users/${userId}/toggle`),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['admin-users'] });
-      toast.success('User status updated');
-    },
-    onError: () => toast.error('Failed to update user status'),
-  });
-
-  const deleteUserMutation = useMutation({
-    mutationFn: (userId: string) => api.delete(`/admin/users/${userId}`),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['admin-users'] });
-      qc.invalidateQueries({ queryKey: ['delete-requests'] });
-      qc.invalidateQueries({ queryKey: ['admin-stats'] });
-      toast.success('User deleted');
-    },
-    onError: (err: any) => {
-      const status = err?.response?.status;
-      if (status === 403) {
-        toast.error('You do not have permission to delete users.');
-      } else {
-        toast.error('Failed to delete user');
+      if (res.data.success) {
+        setUserId(res.data.userId);
+        setRegisteredEmail(data.email);
+        setStep('otp');
+        startCooldown();
+        toast.success(
+          res.data.resent
+            ? 'OTP resent — finish verifying your existing account.'
+            : 'OTP sent to your email!',
+        );
       }
-    },
-  });
+    } catch (err: any) {
+      const status  = err.response?.status;
+      const message = err.response?.data?.message;
 
-  const approveOrgMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) =>
-      api.patch(`/admin/org/members/${id}/status`, { status }),
-    onSuccess: (_, { status }) => {
-      qc.invalidateQueries({ queryKey: ['org-pending'] });
-      qc.invalidateQueries({ queryKey: ['admin-stats'] });
-      toast.success(`Member ${status}`);
-    },
-    onError: (err: any) => {
-      const status = err?.response?.status;
-      if (status === 403) {
-        toast.error('You do not have permission to approve/reject members.');
+      if (status === 409) {
+        const isPhoneConflict = message?.toLowerCase().includes('phone') ?? false;
+        if (isPhoneConflict) {
+          toast.error(message || 'This phone number is already registered.');
+        } else {
+          toast(
+            (t) => (
+              <span className="flex items-center gap-2">
+                <span>{message || 'Email already registered.'}</span>
+                <button
+                  onClick={() => { router.push('/login'); toast.dismiss(t.id); }}
+                  className="underline font-semibold whitespace-nowrap"
+                >
+                  Sign in →
+                </button>
+              </span>
+            ),
+            { duration: 6000, icon: '⚠️' },
+          );
+        }
+        // FIX: release lock so user can re-submit after fixing their input
+        isSubmittingRef.current = false;
+
+      } else if (status === 429) {
+        const waitSec = err.response?.data?.waitSec;
+        const uid     = err.response?.data?.userId;
+        if (uid) {
+          setUserId(uid);
+          setRegisteredEmail(data.email);
+          setStep('otp');
+          startCooldown(waitSec ?? RESEND_COOLDOWN_SEC);
+          toast.error(message || 'OTP already sent. Please wait before requesting a new one.');
+          // FIX: keep lock — user is now in OTP step, not form step
+        } else {
+          toast.error(message || 'Too many attempts. Please try again later.');
+          isSubmittingRef.current = false;
+        }
+
       } else {
-        toast.error('Failed to update member status');
+        toast.error(message || 'Registration failed. Please try again.');
+        // FIX: release lock so user can retry
+        isSubmittingRef.current = false;
       }
-    },
-  });
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  // ── Filtered users ────────────────────────────────────────────────────────
+  /* ── Step 2: Verify OTP ─────────────────────────────────────────────── */
+  const verifyOtp = useCallback(async (otpString: string) => {
+    // FIX: single guard — no race between auto-verify and manual submit
+    if (isVerifyingRef.current) return;
+    if (otpString.length !== OTP_LENGTH) {
+      toast.error('Enter the complete 6-digit code');
+      return;
+    }
 
-  const filteredUsers = (usersData?.users ?? []).filter((u) => {
-    const q = userSearch.toLowerCase();
-    return (
-      !q ||
-      u.name.toLowerCase().includes(q) ||
-      u.email.toLowerCase().includes(q) ||
-      u.role.toLowerCase().includes(q)
-    );
-  });
+    isVerifyingRef.current = true;
+    setLoading(true);
 
-  // ── Stat cards config ─────────────────────────────────────────────────────
+    try {
+      const res = await api.post('/auth/verify-otp', { userId, otp: otpString });
+      if (res.data.success) {
+        setAuth(res.data.user, res.data.accessToken, res.data.refreshToken);
+        toast.success('Account verified! Welcome to 3ZF 🎉');
+        router.push('/community');
+      }
+    } catch (err: any) {
+      const status  = err.response?.status;
+      const message = err.response?.data?.message;
 
-  const statCards: StatCardProps[] = [
-    {
-      icon: Users,
-      label: 'Total Users',
-      value: stats?.users,
-      accent: 'text-indigo-600',
-      accentBg: 'bg-indigo-500',
-      href: '/admin/users',
-    },
-    {
-      icon: Building2,
-      label: 'Org Members',
-      value: stats?.orgMembers,
-      accent: 'text-amber-600',
-      accentBg: 'bg-amber-500',
-      href: '/admin/organisation',
-    },
-    {
-      icon: Package,
-      label: 'Products',
-      value: stats?.products,
-      accent: 'text-pink-600',
-      accentBg: 'bg-pink-500',
-      href: '/admin/products',
-    },
-    {
-      icon: ShoppingBag,
-      label: 'Orders',
-      value: stats?.orders,
-      accent: 'text-emerald-600',
-      accentBg: 'bg-emerald-500',
-      href: '/admin/orders',
-    },
-    {
-      icon: CalendarDays,
-      label: 'Events',
-      value: stats?.events,
-      accent: 'text-violet-600',
-      accentBg: 'bg-violet-500',
-      href: '/admin/events',
-    },
-    {
-      icon: BookOpen,
-      label: 'Blog Posts',
-      value: stats?.blogs,
-      accent: 'text-teal-600',
-      accentBg: 'bg-teal-500',
-      href: '/admin/blogs',
-    },
-    {
-      icon: AlertTriangle,
-      label: 'Delete Requests',
-      value: stats?.deleteRequests,
-      accent: 'text-red-600',
-      accentBg: 'bg-red-500',
-      href: '/admin/users',
-      urgent: true,
-    },
-    {
-      icon: Crown,
-      label: 'Pending Members',
-      value: stats?.pendingOrgMembers,
-      accent: 'text-yellow-600',
-      accentBg: 'bg-yellow-500',
-      href: '/admin/organisation',
-      urgent: (stats?.pendingOrgMembers ?? 0) > 0,
-    },
-  ];
+      if (status === 410) {
+        toast.error('OTP has expired. Please request a new one.');
+      } else if (status === 429) {
+        toast.error('Too many attempts. Please wait before retrying.');
+      } else {
+        // 400, 401, or unknown — bad code, let user retry
+        toast.error(message || 'Invalid OTP. Please try again.');
+      }
 
-  // ── Loading gate ──────────────────────────────────────────────────────────
+      // FIX: always reset OTP inputs on failure so user can try again cleanly
+      setOtp(Array(OTP_LENGTH).fill(''));
+      setTimeout(() => otpRefs.current[0]?.focus(), 50);
+    } finally {
+      setLoading(false);
+      // FIX: always release verifying lock after request completes
+      isVerifyingRef.current = false;
+    }
+  }, [userId, router, setAuth]);
 
-  if (!tokenReady) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-7 h-7 animate-spin text-indigo-500" />
-      </div>
-    );
-  }
+  /* ── Auto-verify when all digits filled ────────────────────────────── */
+  useEffect(() => {
+    // FIX: only fire when we're actually on the OTP step
+    if (step !== 'otp') return;
+    const otpStr = otp.join('');
+    // FIX: don't fire if already verifying (prevents paste + useEffect double-call)
+    if (otpStr.length === OTP_LENGTH && !isVerifyingRef.current) {
+      verifyOtp(otpStr);
+    }
+  // verifyOtp is stable (useCallback) — safe to include
+  }, [otp, step, verifyOtp]);
 
-  // ─── Render ───────────────────────────────────────────────────────────────
+  /* ── OTP input handlers ─────────────────────────────────────────────── */
+  const handleOtpChange = (index: number, value: string) => {
+    if (value.length > 1)     return;
+    if (!/^\d*$/.test(value)) return;
+    const next = [...otp];
+    next[index] = value;
+    setOtp(next);
+    if (value && index < OTP_LENGTH - 1) otpRefs.current[index + 1]?.focus();
+  };
 
+  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent) => {
+    if (e.key === 'Backspace' && !otp[index] && index > 0) {
+      otpRefs.current[index - 1]?.focus();
+    }
+    if (e.key === 'ArrowLeft'  && index > 0)              otpRefs.current[index - 1]?.focus();
+    if (e.key === 'ArrowRight' && index < OTP_LENGTH - 1) otpRefs.current[index + 1]?.focus();
+  };
+
+  const handleOtpPaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, OTP_LENGTH);
+    if (!pasted) return;
+
+    const next = Array(OTP_LENGTH).fill('');
+    pasted.split('').forEach((char, i) => { next[i] = char; });
+    setOtp(next);
+
+    const nextEmpty  = next.findIndex(d => d === '');
+    const focusIndex = nextEmpty === -1 ? OTP_LENGTH - 1 : nextEmpty;
+    otpRefs.current[focusIndex]?.focus();
+
+    // FIX: paste drives verifyOtp directly — suppresses the useEffect race
+    // by setting isVerifyingRef before the state update triggers the effect.
+    if (pasted.length === OTP_LENGTH && !isVerifyingRef.current) {
+      // Let React flush the state update first, then verify
+      setTimeout(() => verifyOtp(pasted), 0);
+    }
+  };
+
+  /* ── Resend OTP ─────────────────────────────────────────────────────── */
+  const resendOtp = async () => {
+    if (resendCooldown > 0 || resendLoading) return;
+    setResendLoading(true);
+    try {
+      const res = await api.post('/auth/resend-otp', { userId });
+      if (res.data.success) {
+        setOtp(Array(OTP_LENGTH).fill(''));
+        setTimeout(() => otpRefs.current[0]?.focus(), 50);
+        startCooldown();
+        toast.success('New OTP sent! Check your email.');
+      }
+    } catch (err: any) {
+      const status  = err.response?.status;
+      const message = err.response?.data?.message;
+      const waitSec = err.response?.data?.waitSec;
+      if (status === 429) {
+        if (waitSec) startCooldown(waitSec);
+        toast.error(message || 'Too many resend requests. Please wait.');
+      } else {
+        toast.error(message || 'Failed to resend OTP. Try again.');
+      }
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
+  /* ── Avatar ─────────────────────────────────────────────────────────── */
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { toast.error('Image must be under 5 MB'); return; }
+    const reader = new FileReader();
+    reader.onload = () => setAvatar(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  /* ── Go back to form ─────────────────────────────────────────────────── */
+  const goBackToForm = () => {
+    setStep('form');
+    setOtp(Array(OTP_LENGTH).fill(''));
+    // FIX: reset BOTH refs so the form can be submitted again
+    isSubmittingRef.current = false;
+    isVerifyingRef.current  = false;
+    if (cooldownRef.current) {
+      clearInterval(cooldownRef.current);
+      cooldownRef.current = null;
+    }
+    setResendCooldown(0);
+  };
+
+  /* ─── Render ─────────────────────────────────────────────────────────── */
   return (
-    <div className="space-y-6 pb-10">
+    <div
+      className="min-h-screen flex items-center justify-center px-4 py-12"
+      style={{ background: 'var(--color-bg-secondary)' }}
+    >
+      <div className="w-full max-w-md">
 
-      {/* ── Page Header ── */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">
-            Dashboard
-          </h1>
-          <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5">
-            Welcome back,{' '}
-            <span className="capitalize font-medium text-gray-600 dark:text-gray-300">
-              {currentRole}
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center mb-8"
+        >
+          <Link href="/" className="inline-flex items-center gap-3 mb-6">
+            <div className="w-12 h-12 rounded-2xl gradient-brand flex items-center justify-center text-white font-bold text-xl">
+              3Z
+            </div>
+            <span className="font-heading font-bold text-2xl" style={{ color: 'var(--color-text)' }}>
+              3ZF Platform
             </span>
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => {
-              refetchStats();
-              qc.invalidateQueries({ queryKey: ['admin-users'] });
-              qc.invalidateQueries({ queryKey: ['delete-requests'] });
-              qc.invalidateQueries({ queryKey: ['org-pending'] });
-              toast.success('Dashboard refreshed');
-            }}
-            className="p-2 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-            title="Refresh all data"
-          >
-            <RefreshCw className="w-4 h-4" />
-          </button>
-          <Link
-            href="/"
-            className="flex items-center gap-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3.5 py-2 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
-          >
-            View site
-            <ExternalLink className="w-3.5 h-3.5" />
           </Link>
-        </div>
-      </div>
+          <h1 className="font-heading text-3xl font-bold" style={{ color: 'var(--color-text)' }}>
+            {step === 'form' ? 'Create Account' : 'Verify Email'}
+          </h1>
+          <p className="mt-2 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+            {step === 'form'
+              ? 'Join the 3ZF community today'
+              : `Enter the 6-digit code sent to ${registeredEmail}`}
+          </p>
+        </motion.div>
 
-      {/* ── Stats Error Banner ── */}
-      {statsError && (
-        <div className="flex items-center gap-2 px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-sm text-red-600 dark:text-red-400">
-          <AlertTriangle className="w-4 h-4 shrink-0" />
-          Failed to load dashboard statistics. Check your server and try refreshing.
-        </div>
-      )}
-
-      {/* ── Stats Grid ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {statCards.map((card) =>
-          statsLoading ? (
-            <div
-              key={card.label}
-              className="h-28 bg-gray-100 dark:bg-gray-800/60 rounded-2xl animate-pulse"
-            />
-          ) : (
-            <StatCard key={card.label} {...card} />
-          )
-        )}
-      </div>
-
-      {/* ── Recent Users ── */}
-      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden">
-        <SectionHeader
-          icon={Users}
-          title="Recent Users"
-          href="/admin/users"
-          iconColor="text-indigo-400"
-        />
-
-        {/* Search */}
-        <div className="px-5 py-3 border-b border-gray-100 dark:border-gray-800">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search by name, email or role…"
-              value={userSearch}
-              onChange={(e) => setUserSearch(e.target.value)}
-              className="w-full pl-8 pr-4 py-2 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-colors"
-            />
-          </div>
+        {/* Step indicator */}
+        <div className="flex items-center justify-center gap-3 mb-6">
+          {['Account Info', 'Verify OTP'].map((s, i) => (
+            <div key={s} className="flex items-center gap-2">
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all
+                ${i === 0 && step === 'form' ? 'gradient-brand text-white' :
+                  i === 0 && step === 'otp'  ? 'bg-green-500 text-white' :
+                  i === 1 && step === 'otp'  ? 'gradient-brand text-white' :
+                  'bg-[var(--color-border)] text-[var(--color-text-muted)]'}`}>
+                {i === 0 && step === 'otp' ? <CheckCircle className="w-4 h-4" /> : i + 1}
+              </div>
+              <span className="text-xs font-medium hidden sm:block" style={{ color: 'var(--color-text-secondary)' }}>
+                {s}
+              </span>
+              {i < 1 && <div className="w-8 h-px" style={{ background: 'var(--color-border)' }} />}
+            </div>
+          ))}
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50/70 dark:bg-gray-800/50">
-                {['Name', 'Email', 'Role', 'Status', 'Actions'].map((h) => (
-                  <th
-                    key={h}
-                    className="text-left px-5 py-3 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider whitespace-nowrap"
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50 dark:divide-gray-800/80">
-              {usersLoading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <tr key={i}>
-                    {Array.from({ length: 5 }).map((_, j) => (
-                      <td key={j} className="px-5 py-4">
-                        <div className="h-4 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
-                      </td>
-                    ))}
-                  </tr>
-                ))
-              ) : usersError ? (
-                <tr>
-                  <td colSpan={5}>
-                    <ErrorState message="Failed to load users. Please refresh." />
-                  </td>
-                </tr>
-              ) : filteredUsers.length === 0 ? (
-                <tr>
-                  <td colSpan={5}>
-                    <EmptyState
-                      message={userSearch ? `No users match "${userSearch}"` : 'No users found'}
-                    />
-                  </td>
-                </tr>
-              ) : (
-                filteredUsers.map((u) => (
-                  <tr
-                    key={u._id}
-                    className="hover:bg-gray-50/60 dark:hover:bg-gray-800/40 transition-colors"
-                  >
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-2.5">
-                        <Avatar name={u.name} />
-                        <span className="text-sm font-semibold text-gray-900 dark:text-white whitespace-nowrap">
-                          {u.name}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3.5 text-sm text-gray-400 dark:text-gray-500 max-w-[180px]">
-                      <span className="truncate block">{u.email}</span>
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <RoleBadge role={u.role} />
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <StatusBadge active={u.isActive} />
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-2">
-                        {/* Toggle — all admin roles can suspend/activate */}
-                        <button
-                          onClick={() => toggleUserMutation.mutate(u._id)}
-                          disabled={toggleUserMutation.isPending}
-                          className={`
-                            text-xs px-3 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-40 whitespace-nowrap
-                            ${u.isActive
-                              ? 'bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40'
-                              : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400 dark:hover:bg-emerald-900/40'
-                            }
-                          `}
-                        >
-                          {u.isActive ? 'Suspend' : 'Activate'}
-                        </button>
+        {/* Card */}
+        <motion.div className="card shadow-card">
+          <AnimatePresence mode="wait">
 
-                        {/* View — always visible */}
-                        <Link
-                          href={`/admin/users/${u._id}`}
-                          className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300 transition-colors"
-                          title="View user details"
-                        >
-                          <MoreHorizontal className="w-4 h-4" />
-                        </Link>
-
-                        {/* Delete — only admin & superadmin */}
-                        {isAdminOrSuper(currentRole) && (
-                          <button
-                            onClick={() => {
-                              if (confirm(`Permanently delete ${u.name}? This cannot be undone.`)) {
-                                deleteUserMutation.mutate(u._id);
-                              }
-                            }}
-                            disabled={deleteUserMutation.isPending}
-                            className="p-1.5 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400 transition-colors disabled:opacity-40"
-                            title="Delete user"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {!usersLoading && !usersError && (usersData?.users?.length ?? 0) > 0 && (
-          <div className="px-5 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
-            <p className="text-xs text-gray-400">
-              Showing {filteredUsers.length} of {usersData?.users?.length ?? 0} recent users
-            </p>
-            <Link
-              href="/admin/users"
-              className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
-            >
-              Manage all users →
-            </Link>
-          </div>
-        )}
-      </div>
-
-      {/* ── Pending Org Members ── */}
-      {(orgPending?.members?.length ?? 0) > 0 && (
-        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-amber-100 dark:border-amber-900/40 overflow-hidden">
-          <SectionHeader
-            icon={Building2}
-            title="Pending Organisation Members"
-            badge={`${orgPending!.members.length} pending`}
-            badgeVariant="warning"
-            href="/admin/organisation"
-            iconColor="text-amber-500"
-          />
-
-          <div className="divide-y divide-gray-50 dark:divide-gray-800">
-            {orgPending!.members.map((m, i) => (
-              <div
-                key={m._id}
-                className="px-5 py-4 flex items-start justify-between gap-4 hover:bg-amber-50/30 dark:hover:bg-amber-900/10 transition-colors"
-                style={{ animationDelay: `${i * 50}ms` }}
+            {/* ── STEP 1: Registration form ─────────────────────────────── */}
+            {step === 'form' ? (
+              <motion.form
+                key="form"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                onSubmit={handleSubmit(onSubmit)}
+                className="space-y-4"
               >
-                <div className="flex items-start gap-3 min-w-0">
-                  <Avatar name={m.name} size="md" />
-                  <div className="min-w-0">
-                    <p className="font-semibold text-gray-900 dark:text-white text-sm truncate">
-                      {m.name}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {m.phone} · {m.district}
-                    </p>
-                    {m.nidDocument?.url && (
-                      <a
-                        href={m.nidDocument.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 hover:underline mt-1.5"
-                      >
-                        View NID document
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
-                    )}
-                  </div>
+                {/* Avatar */}
+                <div className="flex justify-center mb-2">
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    className="relative w-20 h-20 rounded-full overflow-hidden group border-2 border-dashed transition-colors hover:border-[var(--color-brand)]"
+                    style={{ borderColor: 'var(--color-border)' }}
+                    aria-label="Upload profile photo"
+                  >
+                    {avatar
+                      ? <img src={avatar} alt="Avatar preview" className="w-full h-full object-cover" />
+                      : (
+                        <div
+                          className="w-full h-full flex flex-col items-center justify-center gap-1"
+                          style={{ background: 'var(--color-bg-tertiary)' }}
+                        >
+                          <Camera className="w-6 h-6" style={{ color: 'var(--color-text-muted)' }} />
+                          <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Photo</span>
+                        </div>
+                      )}
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <Camera className="w-5 h-5 text-white" />
+                    </div>
+                  </button>
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleAvatarChange}
+                  />
                 </div>
 
-                {/* Approve/Reject — only admin & superadmin */}
-                {isAdminOrSuper(currentRole) ? (
-                  <div className="flex gap-2 shrink-0 pt-0.5">
+                {/* Name */}
+                <div>
+                  <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--color-text)' }}>
+                    Full Name *
+                  </label>
+                  <div className="relative">
+                    <User
+                      className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
+                      style={{ color: 'var(--color-text-muted)' }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Your full name"
+                      autoComplete="name"
+                      {...register('name')}
+                      style={{ paddingLeft: '2.5rem' }}
+                    />
+                  </div>
+                  {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name.message}</p>}
+                </div>
+
+                {/* Email */}
+                <div>
+                  <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--color-text)' }}>
+                    Email Address *
+                  </label>
+                  <div className="relative">
+                    <Mail
+                      className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
+                      style={{ color: 'var(--color-text-muted)' }}
+                    />
+                    <input
+                      type="email"
+                      placeholder="your@email.com"
+                      autoComplete="email"
+                      {...register('email')}
+                      style={{ paddingLeft: '2.5rem' }}
+                    />
+                  </div>
+                  {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
+                </div>
+
+                {/* Confirm Email */}
+                <div>
+                  <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--color-text)' }}>
+                    Confirm Email *
+                  </label>
+                  <div className="relative">
+                    <Mail
+                      className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
+                      style={{ color: 'var(--color-text-muted)' }}
+                    />
+                    <input
+                      type="email"
+                      placeholder="Re-enter your email"
+                      autoComplete="off"
+                      {...register('confirmEmail')}
+                      style={{ paddingLeft: '2.5rem' }}
+                    />
+                  </div>
+                  {errors.confirmEmail && <p className="text-red-500 text-xs mt-1">{errors.confirmEmail.message}</p>}
+                </div>
+
+                {/* Phone */}
+                <div>
+                  <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--color-text)' }}>
+                    Phone *
+                  </label>
+                  <div className="relative">
+                    <Phone
+                      className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
+                      style={{ color: 'var(--color-text-muted)' }}
+                    />
+                    <input
+                      type="tel"
+                      placeholder="+880 1XXXXXXXXX"
+                      autoComplete="tel"
+                      {...register('phone')}
+                      style={{ paddingLeft: '2.5rem' }}
+                    />
+                  </div>
+                  {errors.phone && <p className="text-red-500 text-xs mt-1">{errors.phone.message}</p>}
+                </div>
+
+                {/* Password */}
+                <div>
+                  <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--color-text)' }}>
+                    Password *
+                  </label>
+                  <div className="relative">
+                    <Lock
+                      className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
+                      style={{ color: 'var(--color-text-muted)' }}
+                    />
+                    <input
+                      type={showPass ? 'text' : 'password'}
+                      placeholder="At least 6 characters"
+                      autoComplete="new-password"
+                      {...register('password')}
+                      style={{ paddingLeft: '2.5rem', paddingRight: '2.75rem' }}
+                    />
                     <button
-                      onClick={() => approveOrgMutation.mutate({ id: m._id, status: 'approved' })}
-                      disabled={approveOrgMutation.isPending}
-                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 border border-emerald-200 dark:border-emerald-800 rounded-lg font-medium transition-colors disabled:opacity-40"
+                      type="button"
+                      onClick={() => setShowPass(p => !p)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2"
+                      aria-label={showPass ? 'Hide password' : 'Show password'}
                     >
-                      <CheckCircle className="w-3.5 h-3.5" />
-                      Approve
-                    </button>
-                    <button
-                      onClick={() => approveOrgMutation.mutate({ id: m._id, status: 'rejected' })}
-                      disabled={approveOrgMutation.isPending}
-                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 border border-red-200 dark:border-red-800 rounded-lg font-medium transition-colors disabled:opacity-40"
-                    >
-                      <XCircle className="w-3.5 h-3.5" />
-                      Reject
+                      {showPass
+                        ? <EyeOff className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
+                        : <Eye    className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />}
                     </button>
                   </div>
-                ) : (
-                  <span className="text-xs text-gray-400 dark:text-gray-500 italic shrink-0 pt-1">
-                    View only
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+                  {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password.message}</p>}
+                </div>
 
-      {/* ── Delete Requests — only admin & superadmin ── */}
-      {isAdminOrSuper(currentRole) && (deleteRequests?.users?.length ?? 0) > 0 && (
-        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-red-100 dark:border-red-900/40 overflow-hidden">
-          <SectionHeader
-            icon={AlertTriangle}
-            title="Account Delete Requests"
-            badge={`${deleteRequests!.users.length} requests`}
-            badgeVariant="danger"
-            iconColor="text-red-500"
-          />
-
-          <div className="divide-y divide-gray-50 dark:divide-gray-800">
-            {deleteRequests!.users.map((u) => (
-              <div
-                key={u._id}
-                className="px-5 py-4 flex items-start justify-between gap-4 hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors"
-              >
-                <div className="flex items-start gap-3 min-w-0">
-                  <Avatar name={u.name} size="md" />
-                  <div className="min-w-0">
-                    <p className="font-semibold text-gray-900 dark:text-white text-sm">
-                      {u.name}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-0.5">{u.email}</p>
-                    {u.deleteRequest?.reason && (
-                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5 italic bg-gray-50 dark:bg-gray-800 rounded-lg px-2.5 py-1.5 border border-gray-100 dark:border-gray-700">
-                        &ldquo;{u.deleteRequest.reason}&rdquo;
-                      </p>
-                    )}
+                {/* Confirm Password */}
+                <div>
+                  <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--color-text)' }}>
+                    Confirm Password *
+                  </label>
+                  <div className="relative">
+                    <Lock
+                      className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
+                      style={{ color: 'var(--color-text-muted)' }}
+                    />
+                    <input
+                      type={showConfirmPass ? 'text' : 'password'}
+                      placeholder="Repeat password"
+                      autoComplete="new-password"
+                      {...register('confirmPassword')}
+                      style={{ paddingLeft: '2.5rem', paddingRight: '2.75rem' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPass(p => !p)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2"
+                      aria-label={showConfirmPass ? 'Hide confirm password' : 'Show confirm password'}
+                    >
+                      {showConfirmPass
+                        ? <EyeOff className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
+                        : <Eye    className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />}
+                    </button>
                   </div>
+                  {errors.confirmPassword && (
+                    <p className="text-red-500 text-xs mt-1">{errors.confirmPassword.message}</p>
+                  )}
                 </div>
 
                 <button
-                  onClick={() => {
-                    if (confirm(`Permanently delete ${u.name}'s account?\n\nThis action cannot be undone.`)) {
-                      deleteUserMutation.mutate(u._id);
-                    }
-                  }}
-                  disabled={deleteUserMutation.isPending}
-                  className="flex items-center gap-1.5 text-xs px-3.5 py-2 bg-red-500 hover:bg-red-600 active:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-40 shrink-0 mt-0.5"
+                  type="submit"
+                  disabled={loading}
+                  className="btn-primary w-full py-3 flex items-center justify-center gap-2 text-base mt-2 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  Delete account
+                  {loading
+                    ? <Spinner />
+                    : <>Create Account <ArrowRight className="w-4 h-4" /></>}
                 </button>
-              </div>
-            ))}
-          </div>
+              </motion.form>
 
-          <div className="px-5 py-3 bg-red-50/50 dark:bg-red-900/10 border-t border-red-100 dark:border-red-900/40">
-            <p className="text-xs text-red-500 dark:text-red-400 flex items-center gap-1.5">
-              <AlertTriangle className="w-3 h-3 shrink-0" />
-              Account deletion is permanent and cannot be reversed. Verify before acting.
-            </p>
-          </div>
-        </div>
-      )}
+            ) : (
 
+              /* ── STEP 2: OTP verification ──────────────────────────────── */
+              <motion.div
+                key="otp"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="text-center space-y-6"
+              >
+                <div className="w-16 h-16 rounded-full gradient-brand flex items-center justify-center mx-auto">
+                  <Mail className="w-8 h-8 text-white" />
+                </div>
+
+                <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                  We sent a 6-digit code to{' '}
+                  <span className="font-semibold" style={{ color: 'var(--color-text)' }}>
+                    {registeredEmail}
+                  </span>
+                  . Enter it below to verify your account.
+                  <br />
+                  <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                    Code expires in 45 minutes. You can also paste it directly.
+                  </span>
+                </p>
+
+                {/* OTP inputs */}
+                <div className="flex justify-center gap-2">
+                  {otp.map((digit, i) => (
+                    <input
+                      key={i}
+                      ref={el => { otpRefs.current[i] = el; }}
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={1}
+                      value={digit}
+                      onChange={e  => handleOtpChange(i, e.target.value)}
+                      onKeyDown={e => handleOtpKeyDown(i, e)}
+                      onPaste={handleOtpPaste}
+                      disabled={loading}
+                      aria-label={`OTP digit ${i + 1}`}
+                      className="w-11 h-12 text-center text-lg font-bold rounded-xl transition-all"
+                      style={{
+                        borderColor: digit ? 'var(--color-brand)' : 'var(--color-border)',
+                        padding: 0,
+                        opacity: loading ? 0.6 : 1,
+                      }}
+                    />
+                  ))}
+                </div>
+
+                {/* Manual verify button */}
+                <button
+                  onClick={() => verifyOtp(otp.join(''))}
+                  disabled={loading || otp.join('').length !== OTP_LENGTH}
+                  className="btn-primary w-full py-3 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loading
+                    ? <Spinner />
+                    : <>Verify &amp; Continue <ArrowRight className="w-4 h-4" /></>}
+                </button>
+
+                {/* Resend */}
+                <div className="flex flex-col items-center gap-1">
+                  {resendCooldown > 0 ? (
+                    <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                      Resend OTP in{' '}
+                      <span className="font-semibold tabular-nums" style={{ color: 'var(--color-brand)' }}>
+                        {resendCooldown}s
+                      </span>
+                    </p>
+                  ) : (
+                    <button
+                      onClick={resendOtp}
+                      disabled={resendLoading}
+                      className="flex items-center gap-1.5 text-sm font-medium transition-opacity hover:opacity-75 disabled:opacity-50"
+                      style={{ color: 'var(--color-brand)' }}
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${resendLoading ? 'animate-spin' : ''}`} />
+                      {resendLoading ? 'Sending…' : 'Resend OTP'}
+                    </button>
+                  )}
+                </div>
+
+                <button
+                  onClick={goBackToForm}
+                  disabled={loading}
+                  className="text-sm transition-opacity hover:opacity-75 disabled:opacity-40"
+                  style={{ color: 'var(--color-text-secondary)' }}
+                >
+                  ← Change email address
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Sign-in link */}
+          {step === 'form' && (
+            <div className="mt-5 pt-5 border-t text-center" style={{ borderColor: 'var(--color-border)' }}>
+              <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                Already have an account?{' '}
+                <Link href="/login" className="font-semibold" style={{ color: 'var(--color-brand)' }}>
+                  Sign In
+                </Link>
+              </p>
+            </div>
+          )}
+        </motion.div>
+      </div>
     </div>
+  );
+}
+
+/* ─── Spinner helper ─────────────────────────────────────────────────────── */
+function Spinner() {
+  return (
+    <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24" aria-hidden>
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+    </svg>
   );
 }
