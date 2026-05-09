@@ -9,7 +9,7 @@ import axios from 'axios';
 import Cookies from 'js-cookie';
 import toast from 'react-hot-toast';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:10000/api';
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://threezf-backend-servers.onrender.com/api';
 
 const ACCESS_TOKEN_EXPIRES_DAYS  = 1;
 const REFRESH_TOKEN_EXPIRES_DAYS = 30;
