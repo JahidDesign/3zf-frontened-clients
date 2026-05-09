@@ -1,5 +1,6 @@
 'use client';
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { flushSync } from 'react-dom';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
@@ -45,19 +46,19 @@ export default function RegisterPage() {
   const [resendLoading,   setResendLoading]   = useState(false);
   const [showPass,        setShowPass]        = useState(false);
   const [showConfirmPass, setShowConfirmPass] = useState(false);
-  const [userId,          setUserId]          = useState('');
-  const [registeredEmail, setRegisteredEmail] = useState('');
   const [otp,             setOtp]             = useState<string[]>(Array(OTP_LENGTH).fill(''));
   const [avatar,          setAvatar]          = useState<string | null>(null);
   const [resendCooldown,  setResendCooldown]  = useState(0);
 
-  const fileRef      = useRef<HTMLInputElement>(null);
-  const otpRefs      = useRef<(HTMLInputElement | null)[]>([]);
-  const cooldownRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fileRef        = useRef<HTMLInputElement>(null);
+  const otpRefs        = useRef<(HTMLInputElement | null)[]>([]);
+  const cooldownRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isVerifyingRef = useRef(false);
 
-  // Single source of truth for in-flight state — avoids double-submits
-  const isSubmittingRef = useRef(false);
-  const isVerifyingRef  = useRef(false);
+  const userIdRef          = useRef<string>('');
+  const registeredEmailRef = useRef<string>('');
+
+  const [displayEmail, setDisplayEmail] = useState('');
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -86,26 +87,34 @@ export default function RegisterPage() {
     }, 1000);
   }, []);
 
+  /* ── Transition to OTP step ─────────────────────────────────────────── */
+  const transitionToOtp = useCallback((userId: string, email: string, cooldownSec?: number) => {
+    userIdRef.current          = userId;
+    registeredEmailRef.current = email;
+
+    flushSync(() => {
+      setDisplayEmail(email);
+      setOtp(Array(OTP_LENGTH).fill(''));
+    });
+
+    setStep('otp');
+    startCooldown(cooldownSec ?? RESEND_COOLDOWN_SEC);
+  }, [startCooldown]);
+
   /* ── Step 1: Register ───────────────────────────────────────────────── */
   const onSubmit = async (data: FormData) => {
-    if (isSubmittingRef.current) return;
-    isSubmittingRef.current = true;
+    if (loading) return;
     setLoading(true);
 
     try {
-      // Strip only confirmEmail before sending — confirmPassword stays for backend validation
-      const { confirmEmail: _ce, ...registerData } = data;
-
+      const { confirmEmail: _ce, confirmPassword: _cp, ...registerData } = data;
       const res = await api.post('/auth/register', { ...registerData, avatar });
 
       if (res.data.success) {
-        setUserId(res.data.userId);
-        setRegisteredEmail(data.email);
-        setStep('otp');
-        startCooldown();
+        transitionToOtp(res.data.userId, data.email);
         toast.success(
           res.data.resent
-            ? 'OTP resent — finish verifying your existing account.'
+            ? 'OTP resent — finish verifying your existing session.'
             : 'OTP sent to your email!',
         );
       }
@@ -133,28 +142,20 @@ export default function RegisterPage() {
             { duration: 6000, icon: '⚠️' },
           );
         }
-        // Release lock so user can re-submit after fixing their input
-        isSubmittingRef.current = false;
 
       } else if (status === 429) {
         const waitSec = err.response?.data?.waitSec;
         const uid     = err.response?.data?.userId;
+
         if (uid) {
-          setUserId(uid);
-          setRegisteredEmail(data.email);
-          setStep('otp');
-          startCooldown(waitSec ?? RESEND_COOLDOWN_SEC);
+          transitionToOtp(uid, data.email, waitSec ?? RESEND_COOLDOWN_SEC);
           toast.error(message || 'OTP already sent. Please wait before requesting a new one.');
-          // Keep lock — user is now in OTP step, not form step
         } else {
           toast.error(message || 'Too many attempts. Please try again later.');
-          isSubmittingRef.current = false;
         }
 
       } else {
         toast.error(message || 'Registration failed. Please try again.');
-        // Release lock so user can retry
-        isSubmittingRef.current = false;
       }
     } finally {
       setLoading(false);
@@ -162,11 +163,18 @@ export default function RegisterPage() {
   };
 
   /* ── Step 2: Verify OTP ─────────────────────────────────────────────── */
+  // Only called explicitly by the submit button — no auto-trigger anywhere.
   const verifyOtp = useCallback(async (otpString: string) => {
-    // Single guard — no race between auto-verify and manual submit
     if (isVerifyingRef.current) return;
+
     if (otpString.length !== OTP_LENGTH) {
       toast.error('Enter the complete 6-digit code');
+      return;
+    }
+
+    const currentUserId = userIdRef.current;
+    if (!currentUserId) {
+      toast.error('Session lost. Please register again.');
       return;
     }
 
@@ -174,7 +182,7 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const res = await api.post('/auth/verify-otp', { userId, otp: otpString });
+      const res = await api.post('/auth/verify-otp', { userId: currentUserId, otp: otpString });
       if (res.data.success) {
         setAuth(res.data.user, res.data.accessToken, res.data.refreshToken);
         toast.success('Account verified! Welcome to 3ZF 🎉');
@@ -189,31 +197,16 @@ export default function RegisterPage() {
       } else if (status === 429) {
         toast.error('Too many attempts. Please wait before retrying.');
       } else {
-        // 400, 401, or unknown — bad code, let user retry
         toast.error(message || 'Invalid OTP. Please try again.');
       }
 
-      // Always reset OTP inputs on failure so user can try again cleanly
       setOtp(Array(OTP_LENGTH).fill(''));
       setTimeout(() => otpRefs.current[0]?.focus(), 50);
     } finally {
       setLoading(false);
-      // Always release verifying lock after request completes
       isVerifyingRef.current = false;
     }
-  }, [userId, router, setAuth]);
-
-  /* ── Auto-verify when all digits filled ────────────────────────────── */
-  useEffect(() => {
-    // Only fire when we're actually on the OTP step
-    if (step !== 'otp') return;
-    const otpStr = otp.join('');
-    // Don't fire if already verifying (prevents paste + useEffect double-call)
-    if (otpStr.length === OTP_LENGTH && !isVerifyingRef.current) {
-      verifyOtp(otpStr);
-    }
-  // verifyOtp is stable (useCallback) — safe to include
-  }, [otp, step, verifyOtp]);
+  }, [router, setAuth]);
 
   /* ── OTP input handlers ─────────────────────────────────────────────── */
   const handleOtpChange = (index: number, value: string) => {
@@ -222,6 +215,7 @@ export default function RegisterPage() {
     const next = [...otp];
     next[index] = value;
     setOtp(next);
+    // Only move focus to next box — no auto-submit
     if (value && index < OTP_LENGTH - 1) otpRefs.current[index + 1]?.focus();
   };
 
@@ -242,24 +236,26 @@ export default function RegisterPage() {
     pasted.split('').forEach((char, i) => { next[i] = char; });
     setOtp(next);
 
+    // Only move focus — no auto-submit on paste
     const nextEmpty  = next.findIndex(d => d === '');
     const focusIndex = nextEmpty === -1 ? OTP_LENGTH - 1 : nextEmpty;
     otpRefs.current[focusIndex]?.focus();
-
-    // Paste drives verifyOtp directly — suppresses the useEffect race
-    // by setting isVerifyingRef before the state update triggers the effect.
-    if (pasted.length === OTP_LENGTH && !isVerifyingRef.current) {
-      // Let React flush the state update first, then verify
-      setTimeout(() => verifyOtp(pasted), 0);
-    }
   };
 
   /* ── Resend OTP ─────────────────────────────────────────────────────── */
   const resendOtp = async () => {
     if (resendCooldown > 0 || resendLoading) return;
+
+    const currentUserId = userIdRef.current;
+    if (!currentUserId) {
+      toast.error('Session lost. Please register again.');
+      goBackToForm();
+      return;
+    }
+
     setResendLoading(true);
     try {
-      const res = await api.post('/auth/resend-otp', { userId });
+      const res = await api.post('/auth/resend-otp', { userId: currentUserId });
       if (res.data.success) {
         setOtp(Array(OTP_LENGTH).fill(''));
         setTimeout(() => otpRefs.current[0]?.focus(), 50);
@@ -270,9 +266,13 @@ export default function RegisterPage() {
       const status  = err.response?.status;
       const message = err.response?.data?.message;
       const waitSec = err.response?.data?.waitSec;
+
       if (status === 429) {
         if (waitSec) startCooldown(waitSec);
         toast.error(message || 'Too many resend requests. Please wait.');
+      } else if (status === 404) {
+        toast.error('Session expired. Please register again.');
+        goBackToForm();
       } else {
         toast.error(message || 'Failed to resend OTP. Try again.');
       }
@@ -291,18 +291,24 @@ export default function RegisterPage() {
     reader.readAsDataURL(file);
   };
 
-  /* ── Go back to form ─────────────────────────────────────────────────── */
+  /* ── Go back to form ────────────────────────────────────────────────── */
   const goBackToForm = () => {
-    setStep('form');
-    setOtp(Array(OTP_LENGTH).fill(''));
-    // Reset BOTH refs so the form can be submitted again
-    isSubmittingRef.current = false;
-    isVerifyingRef.current  = false;
+    userIdRef.current          = '';
+    registeredEmailRef.current = '';
+    isVerifyingRef.current     = false;
+
     if (cooldownRef.current) {
       clearInterval(cooldownRef.current);
       cooldownRef.current = null;
     }
-    setResendCooldown(0);
+
+    flushSync(() => {
+      setOtp(Array(OTP_LENGTH).fill(''));
+      setDisplayEmail('');
+      setResendCooldown(0);
+    });
+
+    setStep('form');
   };
 
   /* ─── Render ─────────────────────────────────────────────────────────── */
@@ -333,7 +339,7 @@ export default function RegisterPage() {
           <p className="mt-2 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
             {step === 'form'
               ? 'Join the 3ZF community today'
-              : `Enter the 6-digit code sent to ${registeredEmail}`}
+              : `Enter the 6-digit code sent to ${displayEmail}`}
           </p>
         </motion.div>
 
@@ -409,17 +415,8 @@ export default function RegisterPage() {
                     Full Name *
                   </label>
                   <div className="relative">
-                    <User
-                      className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
-                      style={{ color: 'var(--color-text-muted)' }}
-                    />
-                    <input
-                      type="text"
-                      placeholder="Your full name"
-                      autoComplete="name"
-                      {...register('name')}
-                      style={{ paddingLeft: '2.5rem' }}
-                    />
+                    <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: 'var(--color-text-muted)' }} />
+                    <input type="text" placeholder="Your full name" autoComplete="name" {...register('name')} style={{ paddingLeft: '2.5rem' }} />
                   </div>
                   {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name.message}</p>}
                 </div>
@@ -430,17 +427,8 @@ export default function RegisterPage() {
                     Email Address *
                   </label>
                   <div className="relative">
-                    <Mail
-                      className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
-                      style={{ color: 'var(--color-text-muted)' }}
-                    />
-                    <input
-                      type="email"
-                      placeholder="your@email.com"
-                      autoComplete="email"
-                      {...register('email')}
-                      style={{ paddingLeft: '2.5rem' }}
-                    />
+                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: 'var(--color-text-muted)' }} />
+                    <input type="email" placeholder="your@email.com" autoComplete="email" {...register('email')} style={{ paddingLeft: '2.5rem' }} />
                   </div>
                   {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
                 </div>
@@ -451,17 +439,8 @@ export default function RegisterPage() {
                     Confirm Email *
                   </label>
                   <div className="relative">
-                    <Mail
-                      className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
-                      style={{ color: 'var(--color-text-muted)' }}
-                    />
-                    <input
-                      type="email"
-                      placeholder="Re-enter your email"
-                      autoComplete="off"
-                      {...register('confirmEmail')}
-                      style={{ paddingLeft: '2.5rem' }}
-                    />
+                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: 'var(--color-text-muted)' }} />
+                    <input type="email" placeholder="Re-enter your email" autoComplete="off" {...register('confirmEmail')} style={{ paddingLeft: '2.5rem' }} />
                   </div>
                   {errors.confirmEmail && <p className="text-red-500 text-xs mt-1">{errors.confirmEmail.message}</p>}
                 </div>
@@ -472,17 +451,8 @@ export default function RegisterPage() {
                     Phone *
                   </label>
                   <div className="relative">
-                    <Phone
-                      className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
-                      style={{ color: 'var(--color-text-muted)' }}
-                    />
-                    <input
-                      type="tel"
-                      placeholder="+880 1XXXXXXXXX"
-                      autoComplete="tel"
-                      {...register('phone')}
-                      style={{ paddingLeft: '2.5rem' }}
-                    />
+                    <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: 'var(--color-text-muted)' }} />
+                    <input type="tel" placeholder="+880 1XXXXXXXXX" autoComplete="tel" {...register('phone')} style={{ paddingLeft: '2.5rem' }} />
                   </div>
                   {errors.phone && <p className="text-red-500 text-xs mt-1">{errors.phone.message}</p>}
                 </div>
@@ -493,26 +463,10 @@ export default function RegisterPage() {
                     Password *
                   </label>
                   <div className="relative">
-                    <Lock
-                      className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
-                      style={{ color: 'var(--color-text-muted)' }}
-                    />
-                    <input
-                      type={showPass ? 'text' : 'password'}
-                      placeholder="At least 6 characters"
-                      autoComplete="new-password"
-                      {...register('password')}
-                      style={{ paddingLeft: '2.5rem', paddingRight: '2.75rem' }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPass(p => !p)}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2"
-                      aria-label={showPass ? 'Hide password' : 'Show password'}
-                    >
-                      {showPass
-                        ? <EyeOff className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
-                        : <Eye    className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />}
+                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: 'var(--color-text-muted)' }} />
+                    <input type={showPass ? 'text' : 'password'} placeholder="At least 6 characters" autoComplete="new-password" {...register('password')} style={{ paddingLeft: '2.5rem', paddingRight: '2.75rem' }} />
+                    <button type="button" onClick={() => setShowPass(p => !p)} className="absolute right-3.5 top-1/2 -translate-y-1/2" aria-label={showPass ? 'Hide password' : 'Show password'}>
+                      {showPass ? <EyeOff className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} /> : <Eye className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />}
                     </button>
                   </div>
                   {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password.message}</p>}
@@ -524,31 +478,13 @@ export default function RegisterPage() {
                     Confirm Password *
                   </label>
                   <div className="relative">
-                    <Lock
-                      className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
-                      style={{ color: 'var(--color-text-muted)' }}
-                    />
-                    <input
-                      type={showConfirmPass ? 'text' : 'password'}
-                      placeholder="Repeat password"
-                      autoComplete="new-password"
-                      {...register('confirmPassword')}
-                      style={{ paddingLeft: '2.5rem', paddingRight: '2.75rem' }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmPass(p => !p)}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2"
-                      aria-label={showConfirmPass ? 'Hide confirm password' : 'Show confirm password'}
-                    >
-                      {showConfirmPass
-                        ? <EyeOff className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
-                        : <Eye    className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />}
+                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: 'var(--color-text-muted)' }} />
+                    <input type={showConfirmPass ? 'text' : 'password'} placeholder="Repeat password" autoComplete="new-password" {...register('confirmPassword')} style={{ paddingLeft: '2.5rem', paddingRight: '2.75rem' }} />
+                    <button type="button" onClick={() => setShowConfirmPass(p => !p)} className="absolute right-3.5 top-1/2 -translate-y-1/2" aria-label={showConfirmPass ? 'Hide confirm password' : 'Show confirm password'}>
+                      {showConfirmPass ? <EyeOff className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} /> : <Eye className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />}
                     </button>
                   </div>
-                  {errors.confirmPassword && (
-                    <p className="text-red-500 text-xs mt-1">{errors.confirmPassword.message}</p>
-                  )}
+                  {errors.confirmPassword && <p className="text-red-500 text-xs mt-1">{errors.confirmPassword.message}</p>}
                 </div>
 
                 <button
@@ -556,9 +492,7 @@ export default function RegisterPage() {
                   disabled={loading}
                   className="btn-primary w-full py-3 flex items-center justify-center gap-2 text-base mt-2 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {loading
-                    ? <Spinner />
-                    : <>Create Account <ArrowRight className="w-4 h-4" /></>}
+                  {loading ? <Spinner /> : <>Create Account <ArrowRight className="w-4 h-4" /></>}
                 </button>
               </motion.form>
 
@@ -579,12 +513,12 @@ export default function RegisterPage() {
                 <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
                   We sent a 6-digit code to{' '}
                   <span className="font-semibold" style={{ color: 'var(--color-text)' }}>
-                    {registeredEmail}
+                    {displayEmail}
                   </span>
                   . Enter it below to verify your account.
                   <br />
                   <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                    Code expires in 45 minutes. You can also paste it directly.
+                    Code expires in 45 minutes.
                   </span>
                 </p>
 
@@ -613,15 +547,13 @@ export default function RegisterPage() {
                   ))}
                 </div>
 
-                {/* Manual verify button */}
+                {/* Submit button — the ONLY way to trigger verify */}
                 <button
                   onClick={() => verifyOtp(otp.join(''))}
                   disabled={loading || otp.join('').length !== OTP_LENGTH}
                   className="btn-primary w-full py-3 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {loading
-                    ? <Spinner />
-                    : <>Verify &amp; Continue <ArrowRight className="w-4 h-4" /></>}
+                  {loading ? <Spinner /> : <>Verify &amp; Continue <ArrowRight className="w-4 h-4" /></>}
                 </button>
 
                 {/* Resend */}
@@ -675,7 +607,7 @@ export default function RegisterPage() {
   );
 }
 
-/* ─── Spinner helper ─────────────────────────────────────────────────────── */
+/* ─── Spinner ────────────────────────────────────────────────────────────── */
 function Spinner() {
   return (
     <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24" aria-hidden>

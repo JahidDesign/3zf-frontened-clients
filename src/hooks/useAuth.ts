@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import api from '@/lib/api';
+import api, { getAccessToken, ensureFreshToken } from '@/lib/api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export interface Membership {
@@ -14,9 +14,7 @@ export interface AuthUser {
   email: string;
   avatar?: string;
   role?: 'user' | 'admin' | 'moderator' | string;
-  /** Flat status field — populated if your backend returns membershipStatus directly on user */
   membershipStatus?: 'pending' | 'approved' | 'rejected';
-  /** Nested object — populated if your backend returns user.membership.status */
   membership?: Membership;
 }
 
@@ -32,9 +30,25 @@ export function useAuth(): AuthState {
   const [loading, setLoading] = useState(true);
 
   const fetchMe = async () => {
+    // Step 1: token আছে কিনা check করো — না থাকলে call করবে না
+    const token = getAccessToken();
+    if (!token) {
+      setUser(null);
+      setLoading(false);
+      return;
+    }
+
+    // Step 2: token থাকলে fresh কিনা নিশ্চিত করো (expired হলে refresh করবে)
+    const ok = await ensureFreshToken();
+    if (!ok) {
+      setUser(null);
+      setLoading(false);
+      return;
+    }
+
+    // Step 3: valid token আছে — এখন /auth/me call করো
     try {
       const { data } = await api.get('/auth/me');
-      // Support both { user: {...} } and flat { _id, name, ... } response shapes
       setUser((data.user ?? data) as AuthUser | null);
     } catch {
       setUser(null);
