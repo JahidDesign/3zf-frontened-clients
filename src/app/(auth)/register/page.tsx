@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
@@ -18,9 +18,13 @@ import api from '@/lib/api';
 const schema = z.object({
   name:            z.string().min(2, 'Name must be at least 2 characters'),
   email:           z.string().email('Invalid email address'),
+  confirmEmail:    z.string().email('Invalid email address'),
   phone:           z.string().min(10, 'Phone number is required'),
   password:        z.string().min(6, 'Password must be at least 6 characters'),
   confirmPassword: z.string(),
+}).refine(d => d.email === d.confirmEmail, {
+  message: "Email addresses don't match",
+  path: ['confirmEmail'],
 }).refine(d => d.password === d.confirmPassword, {
   message: "Passwords don't match",
   path: ['confirmPassword'],
@@ -29,6 +33,7 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>;
 
 const RESEND_COOLDOWN_SEC = 60;
+const OTP_LENGTH = 6;
 
 /* ─── Component ─────────────────────────────────────────────────────────── */
 export default function RegisterPage() {
@@ -39,67 +44,72 @@ export default function RegisterPage() {
   const [loading,         setLoading]         = useState(false);
   const [resendLoading,   setResendLoading]   = useState(false);
   const [showPass,        setShowPass]        = useState(false);
+  const [showConfirmPass, setShowConfirmPass] = useState(false);
   const [userId,          setUserId]          = useState('');
   const [registeredEmail, setRegisteredEmail] = useState('');
-  const [otp,             setOtp]             = useState(['', '', '', '', '', '']);
+  const [otp,             setOtp]             = useState<string[]>(Array(OTP_LENGTH).fill(''));
   const [avatar,          setAvatar]          = useState<string | null>(null);
   const [resendCooldown,  setResendCooldown]  = useState(0);
 
   const fileRef      = useRef<HTMLInputElement>(null);
   const otpRefs      = useRef<(HTMLInputElement | null)[]>([]);
   const cooldownRef  = useRef<ReturnType<typeof setInterval> | null>(null);
-  const submittedRef = useRef(false);
-  const verifyingRef = useRef(false);
+
+  // Single source of truth for in-flight state — avoids double-submits
+  const isSubmittingRef = useRef(false);
+  const isVerifyingRef  = useRef(false);
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
   });
 
+  /* ── Cleanup on unmount ─────────────────────────────────────────────── */
+  useEffect(() => {
+    return () => {
+      if (cooldownRef.current) clearInterval(cooldownRef.current);
+    };
+  }, []);
+
   /* ── Cooldown timer ─────────────────────────────────────────────────── */
-  const startCooldown = (seconds = RESEND_COOLDOWN_SEC) => {
-    setResendCooldown(seconds);
+  const startCooldown = useCallback((seconds = RESEND_COOLDOWN_SEC) => {
     if (cooldownRef.current) clearInterval(cooldownRef.current);
+    setResendCooldown(seconds);
     cooldownRef.current = setInterval(() => {
       setResendCooldown(prev => {
-        if (prev <= 1) { clearInterval(cooldownRef.current!); return 0; }
+        if (prev <= 1) {
+          clearInterval(cooldownRef.current!);
+          cooldownRef.current = null;
+          return 0;
+        }
         return prev - 1;
       });
     }, 1000);
-  };
-
-  useEffect(() => () => { if (cooldownRef.current) clearInterval(cooldownRef.current); }, []);
-
-  /* ── Auto-verify when all 6 digits filled ───────────────────────────── */
-  useEffect(() => {
-    if (step === 'otp' && otp.every(d => d !== '') && !verifyingRef.current) {
-      verifyOtp(otp.join(''));
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [otp, step]);
+  }, []);
 
   /* ── Step 1: Register ───────────────────────────────────────────────── */
   const onSubmit = async (data: FormData) => {
-    if (submittedRef.current) return;
-    submittedRef.current = true;
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     setLoading(true);
 
     try {
-      const res = await api.post('/auth/register', { ...data, avatar });
+      // FIX: strip BOTH confirmEmail and confirmPassword before sending
+      const { confirmEmail: _ce, confirmPassword: _cp, ...registerData } = data;
+
+      const res = await api.post('/auth/register', { ...registerData, avatar });
 
       if (res.data.success) {
         setUserId(res.data.userId);
         setRegisteredEmail(data.email);
         setStep('otp');
         startCooldown();
-
-        if (res.data.resent) {
-          toast.success('OTP resent — finish verifying your existing account.');
-        } else {
-          toast.success('OTP sent to your email!');
-        }
+        toast.success(
+          res.data.resent
+            ? 'OTP resent — finish verifying your existing account.'
+            : 'OTP sent to your email!',
+        );
       }
     } catch (err: any) {
-      submittedRef.current = false;
       const status  = err.response?.status;
       const message = err.response?.data?.message;
 
@@ -123,8 +133,10 @@ export default function RegisterPage() {
             { duration: 6000, icon: '⚠️' },
           );
         }
+        // FIX: release lock so user can re-submit after fixing their input
+        isSubmittingRef.current = false;
+
       } else if (status === 429) {
-        // ✅ Server sends waitSec — start the real cooldown timer and redirect to OTP
         const waitSec = err.response?.data?.waitSec;
         const uid     = err.response?.data?.userId;
         if (uid) {
@@ -133,58 +145,36 @@ export default function RegisterPage() {
           setStep('otp');
           startCooldown(waitSec ?? RESEND_COOLDOWN_SEC);
           toast.error(message || 'OTP already sent. Please wait before requesting a new one.');
+          // FIX: keep lock — user is now in OTP step, not form step
         } else {
           toast.error(message || 'Too many attempts. Please try again later.');
+          isSubmittingRef.current = false;
         }
+
       } else {
         toast.error(message || 'Registration failed. Please try again.');
+        // FIX: release lock so user can retry
+        isSubmittingRef.current = false;
       }
     } finally {
       setLoading(false);
     }
   };
 
-  /* ── OTP input handlers ─────────────────────────────────────────────── */
-  const handleOtpChange = (index: number, value: string) => {
-    if (value.length > 1)     return;
-    if (!/^\d*$/.test(value)) return;
-    const newOtp = [...otp];
-    newOtp[index] = value;
-    setOtp(newOtp);
-    if (value && index < 5) otpRefs.current[index + 1]?.focus();
-  };
-
-  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent) => {
-    if (e.key === 'Backspace' && !otp[index] && index > 0) {
-      otpRefs.current[index - 1]?.focus();
-    }
-    if (e.key === 'ArrowLeft'  && index > 0) otpRefs.current[index - 1]?.focus();
-    if (e.key === 'ArrowRight' && index < 5) otpRefs.current[index + 1]?.focus();
-  };
-
-  const handleOtpPaste = (e: React.ClipboardEvent) => {
-    e.preventDefault();
-    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
-    if (!pasted) return;
-    const newOtp = [...otp];
-    pasted.split('').forEach((char, i) => { newOtp[i] = char; });
-    setOtp(newOtp);
-    const nextEmpty  = newOtp.findIndex(d => d === '');
-    const focusIndex = nextEmpty === -1 ? 5 : nextEmpty;
-    otpRefs.current[focusIndex]?.focus();
-    if (pasted.length === 6) verifyOtp(pasted);
-  };
-
   /* ── Step 2: Verify OTP ─────────────────────────────────────────────── */
-  const verifyOtp = async (otpString?: string) => {
-    if (verifyingRef.current) return;
-    const otpStr = otpString ?? otp.join('');
-    if (otpStr.length !== 6) { toast.error('Enter the complete 6-digit code'); return; }
+  const verifyOtp = useCallback(async (otpString: string) => {
+    // FIX: single guard — no race between auto-verify and manual submit
+    if (isVerifyingRef.current) return;
+    if (otpString.length !== OTP_LENGTH) {
+      toast.error('Enter the complete 6-digit code');
+      return;
+    }
 
-    verifyingRef.current = true;
+    isVerifyingRef.current = true;
     setLoading(true);
+
     try {
-      const res = await api.post('/auth/verify-otp', { userId, otp: otpStr });
+      const res = await api.post('/auth/verify-otp', { userId, otp: otpString });
       if (res.data.success) {
         setAuth(res.data.user, res.data.accessToken, res.data.refreshToken);
         toast.success('Account verified! Welcome to 3ZF 🎉');
@@ -194,21 +184,73 @@ export default function RegisterPage() {
       const status  = err.response?.status;
       const message = err.response?.data?.message;
 
-      if (status === 400 || status === 401) {
-        toast.error(message || 'Invalid OTP. Please try again.');
-      } else if (status === 410) {
+      if (status === 410) {
         toast.error('OTP has expired. Please request a new one.');
       } else if (status === 429) {
         toast.error('Too many attempts. Please wait before retrying.');
       } else {
-        toast.error(message || 'Verification failed. Please try again.');
+        // 400, 401, or unknown — bad code, let user retry
+        toast.error(message || 'Invalid OTP. Please try again.');
       }
 
-      setOtp(['', '', '', '', '', '']);
+      // FIX: always reset OTP inputs on failure so user can try again cleanly
+      setOtp(Array(OTP_LENGTH).fill(''));
       setTimeout(() => otpRefs.current[0]?.focus(), 50);
     } finally {
       setLoading(false);
-      verifyingRef.current = false;
+      // FIX: always release verifying lock after request completes
+      isVerifyingRef.current = false;
+    }
+  }, [userId, router, setAuth]);
+
+  /* ── Auto-verify when all digits filled ────────────────────────────── */
+  useEffect(() => {
+    // FIX: only fire when we're actually on the OTP step
+    if (step !== 'otp') return;
+    const otpStr = otp.join('');
+    // FIX: don't fire if already verifying (prevents paste + useEffect double-call)
+    if (otpStr.length === OTP_LENGTH && !isVerifyingRef.current) {
+      verifyOtp(otpStr);
+    }
+  // verifyOtp is stable (useCallback) — safe to include
+  }, [otp, step, verifyOtp]);
+
+  /* ── OTP input handlers ─────────────────────────────────────────────── */
+  const handleOtpChange = (index: number, value: string) => {
+    if (value.length > 1)     return;
+    if (!/^\d*$/.test(value)) return;
+    const next = [...otp];
+    next[index] = value;
+    setOtp(next);
+    if (value && index < OTP_LENGTH - 1) otpRefs.current[index + 1]?.focus();
+  };
+
+  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent) => {
+    if (e.key === 'Backspace' && !otp[index] && index > 0) {
+      otpRefs.current[index - 1]?.focus();
+    }
+    if (e.key === 'ArrowLeft'  && index > 0)              otpRefs.current[index - 1]?.focus();
+    if (e.key === 'ArrowRight' && index < OTP_LENGTH - 1) otpRefs.current[index + 1]?.focus();
+  };
+
+  const handleOtpPaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, OTP_LENGTH);
+    if (!pasted) return;
+
+    const next = Array(OTP_LENGTH).fill('');
+    pasted.split('').forEach((char, i) => { next[i] = char; });
+    setOtp(next);
+
+    const nextEmpty  = next.findIndex(d => d === '');
+    const focusIndex = nextEmpty === -1 ? OTP_LENGTH - 1 : nextEmpty;
+    otpRefs.current[focusIndex]?.focus();
+
+    // FIX: paste drives verifyOtp directly — suppresses the useEffect race
+    // by setting isVerifyingRef before the state update triggers the effect.
+    if (pasted.length === OTP_LENGTH && !isVerifyingRef.current) {
+      // Let React flush the state update first, then verify
+      setTimeout(() => verifyOtp(pasted), 0);
     }
   };
 
@@ -219,7 +261,7 @@ export default function RegisterPage() {
     try {
       const res = await api.post('/auth/resend-otp', { userId });
       if (res.data.success) {
-        setOtp(['', '', '', '', '', '']);
+        setOtp(Array(OTP_LENGTH).fill(''));
         setTimeout(() => otpRefs.current[0]?.focus(), 50);
         startCooldown();
         toast.success('New OTP sent! Check your email.');
@@ -229,7 +271,6 @@ export default function RegisterPage() {
       const message = err.response?.data?.message;
       const waitSec = err.response?.data?.waitSec;
       if (status === 429) {
-        // ✅ Use server's actual wait time instead of generic message
         if (waitSec) startCooldown(waitSec);
         toast.error(message || 'Too many resend requests. Please wait.');
       } else {
@@ -253,10 +294,14 @@ export default function RegisterPage() {
   /* ── Go back to form ─────────────────────────────────────────────────── */
   const goBackToForm = () => {
     setStep('form');
-    setOtp(['', '', '', '', '', '']);
-    submittedRef.current = false;
-    verifyingRef.current = false;
-    if (cooldownRef.current) clearInterval(cooldownRef.current);
+    setOtp(Array(OTP_LENGTH).fill(''));
+    // FIX: reset BOTH refs so the form can be submitted again
+    isSubmittingRef.current = false;
+    isVerifyingRef.current  = false;
+    if (cooldownRef.current) {
+      clearInterval(cooldownRef.current);
+      cooldownRef.current = null;
+    }
     setResendCooldown(0);
   };
 
@@ -400,6 +445,27 @@ export default function RegisterPage() {
                   {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
                 </div>
 
+                {/* Confirm Email */}
+                <div>
+                  <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--color-text)' }}>
+                    Confirm Email *
+                  </label>
+                  <div className="relative">
+                    <Mail
+                      className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
+                      style={{ color: 'var(--color-text-muted)' }}
+                    />
+                    <input
+                      type="email"
+                      placeholder="Re-enter your email"
+                      autoComplete="off"
+                      {...register('confirmEmail')}
+                      style={{ paddingLeft: '2.5rem' }}
+                    />
+                  </div>
+                  {errors.confirmEmail && <p className="text-red-500 text-xs mt-1">{errors.confirmEmail.message}</p>}
+                </div>
+
                 {/* Phone */}
                 <div>
                   <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--color-text)' }}>
@@ -440,7 +506,7 @@ export default function RegisterPage() {
                     />
                     <button
                       type="button"
-                      onClick={() => setShowPass(!showPass)}
+                      onClick={() => setShowPass(p => !p)}
                       className="absolute right-3.5 top-1/2 -translate-y-1/2"
                       aria-label={showPass ? 'Hide password' : 'Show password'}
                     >
@@ -463,12 +529,22 @@ export default function RegisterPage() {
                       style={{ color: 'var(--color-text-muted)' }}
                     />
                     <input
-                      type="password"
+                      type={showConfirmPass ? 'text' : 'password'}
                       placeholder="Repeat password"
                       autoComplete="new-password"
                       {...register('confirmPassword')}
-                      style={{ paddingLeft: '2.5rem' }}
+                      style={{ paddingLeft: '2.5rem', paddingRight: '2.75rem' }}
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPass(p => !p)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2"
+                      aria-label={showConfirmPass ? 'Hide confirm password' : 'Show confirm password'}
+                    >
+                      {showConfirmPass
+                        ? <EyeOff className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
+                        : <Eye    className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />}
+                    </button>
                   </div>
                   {errors.confirmPassword && (
                     <p className="text-red-500 text-xs mt-1">{errors.confirmPassword.message}</p>
@@ -478,7 +554,7 @@ export default function RegisterPage() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="btn-primary w-full py-3 flex items-center justify-center gap-2 text-base mt-2"
+                  className="btn-primary w-full py-3 flex items-center justify-center gap-2 text-base mt-2 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {loading
                     ? <Spinner />
@@ -537,10 +613,10 @@ export default function RegisterPage() {
                   ))}
                 </div>
 
-                {/* ✅ Manual verify button — always clickable even if not all digits filled */}
+                {/* Manual verify button */}
                 <button
-                  onClick={() => verifyOtp()}
-                  disabled={loading || otp.join('').length !== 6}
+                  onClick={() => verifyOtp(otp.join(''))}
+                  disabled={loading || otp.join('').length !== OTP_LENGTH}
                   className="btn-primary w-full py-3 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading
@@ -561,7 +637,7 @@ export default function RegisterPage() {
                     <button
                       onClick={resendOtp}
                       disabled={resendLoading}
-                      className="flex items-center gap-1.5 text-sm font-medium transition-opacity hover:opacity-75"
+                      className="flex items-center gap-1.5 text-sm font-medium transition-opacity hover:opacity-75 disabled:opacity-50"
                       style={{ color: 'var(--color-brand)' }}
                     >
                       <RefreshCw className={`w-3.5 h-3.5 ${resendLoading ? 'animate-spin' : ''}`} />
@@ -572,7 +648,8 @@ export default function RegisterPage() {
 
                 <button
                   onClick={goBackToForm}
-                  className="text-sm transition-opacity hover:opacity-75"
+                  disabled={loading}
+                  className="text-sm transition-opacity hover:opacity-75 disabled:opacity-40"
                   style={{ color: 'var(--color-text-secondary)' }}
                 >
                   ← Change email address

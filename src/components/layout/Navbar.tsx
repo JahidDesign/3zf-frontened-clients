@@ -79,51 +79,51 @@ export default function MainNavbar() {
       key: 'home',
       href: '/',
       label: t.nav.home,
-      image: '/icons/home.png',
+      image: 'https://res.cloudinary.com/dgdlyrgda/image/upload/v1778314090/home_twdv0m.png',
     },
     {
       key: 'about',
       href: '/about',
       label: t.nav.about,
-      image: '/icons/about.png',
+      image: 'https://res.cloudinary.com/dgdlyrgda/image/upload/v1778313288/about_dl6zlp.png',
     },
     {
       key: 'community',
       href: '/community',
       label: t.nav.community,
-      image: '/4x/harmony.png',
+      image: 'https://res.cloudinary.com/dgdlyrgda/image/upload/v1778313255/harmony_bzasem.png',
       requiresAuth: true,
     },
     {
       key: 'organisation',
       href: '/organisation',
       label: t.nav.organisation,
-      image: '/4x/organisation.png',
+      image: 'https://res.cloudinary.com/dgdlyrgda/image/upload/v1778313255/organisation_idwnrf.png',
       requiresAuth: true,
     },
     {
       key: 'association',
       href: '/association',
       label: t.nav.association,
-      image: '/4x/association.png',
+      image: 'https://res.cloudinary.com/dgdlyrgda/image/upload/v1778313264/harmonyAssest_cbv9vk.png',
       requiresAuth: true,
     },
     {
       key: 'supershop',
       href: '/supershop',
       label: t.nav.supershop,
-      image: '/icons/supershop.png',
+      image: 'https://res.cloudinary.com/dgdlyrgda/image/upload/v1778313886/supershop_soraxj.png',
     },
     {
       key: 'blood',
       href: '/blood',
       label: t.nav.blood,
-      image: '/icons/blood.webp',
+      image: 'https://res.cloudinary.com/dgdlyrgda/image/upload/v1778313821/blood_b17gxf.webp',
     },
     {
       key: 'more',
       label: lang === 'bn' ? 'আরো' : 'More',
-      image: '/icons/more.png',
+      image: 'https://res.cloudinary.com/dgdlyrgda/image/upload/v1778313268/more_bmwmbp.png',
       dropdown: [
         { label: t.nav.events,  href: '/events' },
         { label: t.nav.blog,    href: '/blog' },
@@ -175,7 +175,7 @@ export default function MainNavbar() {
         {/* ───── Logo ───── */}
         <Link href="/" className="flex items-center gap-2 flex-shrink-0 min-w-0">
           <Image
-            src="/3zf.png"
+            src="https://res.cloudinary.com/dgdlyrgda/image/upload/v1778313254/3zf_q1huoo.png"
             alt="3ZF Logo"
             width={32}
             height={32}
