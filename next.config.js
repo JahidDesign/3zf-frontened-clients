@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  reactStrictMode: false,
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'res.cloudinary.com' },
@@ -7,6 +8,6 @@ const nextConfig = {
       { protocol: 'https', hostname: 'avatars.githubusercontent.com' },
     ],
   },
-  experimental: { serverActions: { allowedOrigins: ['localhost:3000'] } },
+  experimental: { serverActions: { allowedOrigins: ['*'] } },
 };
 module.exports = nextConfig;

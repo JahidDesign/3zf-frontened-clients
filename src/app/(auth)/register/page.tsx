@@ -93,8 +93,8 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      // FIX: strip BOTH confirmEmail and confirmPassword before sending
-      const { confirmEmail: _ce, confirmPassword: _cp, ...registerData } = data;
+      // Strip only confirmEmail before sending — confirmPassword stays for backend validation
+      const { confirmEmail: _ce, ...registerData } = data;
 
       const res = await api.post('/auth/register', { ...registerData, avatar });
 
@@ -133,7 +133,7 @@ export default function RegisterPage() {
             { duration: 6000, icon: '⚠️' },
           );
         }
-        // FIX: release lock so user can re-submit after fixing their input
+        // Release lock so user can re-submit after fixing their input
         isSubmittingRef.current = false;
 
       } else if (status === 429) {
@@ -145,7 +145,7 @@ export default function RegisterPage() {
           setStep('otp');
           startCooldown(waitSec ?? RESEND_COOLDOWN_SEC);
           toast.error(message || 'OTP already sent. Please wait before requesting a new one.');
-          // FIX: keep lock — user is now in OTP step, not form step
+          // Keep lock — user is now in OTP step, not form step
         } else {
           toast.error(message || 'Too many attempts. Please try again later.');
           isSubmittingRef.current = false;
@@ -153,7 +153,7 @@ export default function RegisterPage() {
 
       } else {
         toast.error(message || 'Registration failed. Please try again.');
-        // FIX: release lock so user can retry
+        // Release lock so user can retry
         isSubmittingRef.current = false;
       }
     } finally {
@@ -163,7 +163,7 @@ export default function RegisterPage() {
 
   /* ── Step 2: Verify OTP ─────────────────────────────────────────────── */
   const verifyOtp = useCallback(async (otpString: string) => {
-    // FIX: single guard — no race between auto-verify and manual submit
+    // Single guard — no race between auto-verify and manual submit
     if (isVerifyingRef.current) return;
     if (otpString.length !== OTP_LENGTH) {
       toast.error('Enter the complete 6-digit code');
@@ -193,22 +193,22 @@ export default function RegisterPage() {
         toast.error(message || 'Invalid OTP. Please try again.');
       }
 
-      // FIX: always reset OTP inputs on failure so user can try again cleanly
+      // Always reset OTP inputs on failure so user can try again cleanly
       setOtp(Array(OTP_LENGTH).fill(''));
       setTimeout(() => otpRefs.current[0]?.focus(), 50);
     } finally {
       setLoading(false);
-      // FIX: always release verifying lock after request completes
+      // Always release verifying lock after request completes
       isVerifyingRef.current = false;
     }
   }, [userId, router, setAuth]);
 
   /* ── Auto-verify when all digits filled ────────────────────────────── */
   useEffect(() => {
-    // FIX: only fire when we're actually on the OTP step
+    // Only fire when we're actually on the OTP step
     if (step !== 'otp') return;
     const otpStr = otp.join('');
-    // FIX: don't fire if already verifying (prevents paste + useEffect double-call)
+    // Don't fire if already verifying (prevents paste + useEffect double-call)
     if (otpStr.length === OTP_LENGTH && !isVerifyingRef.current) {
       verifyOtp(otpStr);
     }
@@ -246,7 +246,7 @@ export default function RegisterPage() {
     const focusIndex = nextEmpty === -1 ? OTP_LENGTH - 1 : nextEmpty;
     otpRefs.current[focusIndex]?.focus();
 
-    // FIX: paste drives verifyOtp directly — suppresses the useEffect race
+    // Paste drives verifyOtp directly — suppresses the useEffect race
     // by setting isVerifyingRef before the state update triggers the effect.
     if (pasted.length === OTP_LENGTH && !isVerifyingRef.current) {
       // Let React flush the state update first, then verify
@@ -295,7 +295,7 @@ export default function RegisterPage() {
   const goBackToForm = () => {
     setStep('form');
     setOtp(Array(OTP_LENGTH).fill(''));
-    // FIX: reset BOTH refs so the form can be submitted again
+    // Reset BOTH refs so the form can be submitted again
     isSubmittingRef.current = false;
     isVerifyingRef.current  = false;
     if (cooldownRef.current) {
