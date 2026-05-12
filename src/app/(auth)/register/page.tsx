@@ -34,11 +34,11 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>;
 
 const RESEND_COOLDOWN_SEC = 60;
-const OTP_LENGTH = 6;
+const OTP_LENGTH          = 6;
 
 /* ─── Component ─────────────────────────────────────────────────────────── */
 export default function RegisterPage() {
-  const router = useRouter();
+  const router      = useRouter();
   const { setAuth } = useAuthStore();
 
   const [step,            setStep]            = useState<'form' | 'otp'>('form');
@@ -49,16 +49,13 @@ export default function RegisterPage() {
   const [otp,             setOtp]             = useState<string[]>(Array(OTP_LENGTH).fill(''));
   const [avatar,          setAvatar]          = useState<string | null>(null);
   const [resendCooldown,  setResendCooldown]  = useState(0);
+  const [displayEmail,    setDisplayEmail]    = useState('');
 
   const fileRef        = useRef<HTMLInputElement>(null);
   const otpRefs        = useRef<(HTMLInputElement | null)[]>([]);
   const cooldownRef    = useRef<ReturnType<typeof setInterval> | null>(null);
   const isVerifyingRef = useRef(false);
-
-  const userIdRef          = useRef<string>('');
-  const registeredEmailRef = useRef<string>('');
-
-  const [displayEmail, setDisplayEmail] = useState('');
+  const userIdRef      = useRef<string>('');
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -70,6 +67,15 @@ export default function RegisterPage() {
       if (cooldownRef.current) clearInterval(cooldownRef.current);
     };
   }, []);
+
+  /* ── Focus first OTP box when step changes to otp ──────────────────── */
+  useEffect(() => {
+    if (step === 'otp') {
+      // Small delay to let AnimatePresence finish rendering
+      const t = setTimeout(() => otpRefs.current[0]?.focus(), 150);
+      return () => clearTimeout(t);
+    }
+  }, [step]);
 
   /* ── Cooldown timer ─────────────────────────────────────────────────── */
   const startCooldown = useCallback((seconds = RESEND_COOLDOWN_SEC) => {
@@ -89,8 +95,7 @@ export default function RegisterPage() {
 
   /* ── Transition to OTP step ─────────────────────────────────────────── */
   const transitionToOtp = useCallback((userId: string, email: string, cooldownSec?: number) => {
-    userIdRef.current          = userId;
-    registeredEmailRef.current = email;
+    userIdRef.current = userId;
 
     flushSync(() => {
       setDisplayEmail(email);
@@ -100,6 +105,25 @@ export default function RegisterPage() {
     setStep('otp');
     startCooldown(cooldownSec ?? RESEND_COOLDOWN_SEC);
   }, [startCooldown]);
+
+  /* ── Go back to form ────────────────────────────────────────────────── */
+  const goBackToForm = useCallback(() => {
+    userIdRef.current      = '';
+    isVerifyingRef.current = false;
+
+    if (cooldownRef.current) {
+      clearInterval(cooldownRef.current);
+      cooldownRef.current = null;
+    }
+
+    flushSync(() => {
+      setOtp(Array(OTP_LENGTH).fill(''));
+      setDisplayEmail('');
+      setResendCooldown(0);
+    });
+
+    setStep('form');
+  }, []);
 
   /* ── Step 1: Register ───────────────────────────────────────────────── */
   const onSubmit = async (data: FormData) => {
@@ -142,7 +166,6 @@ export default function RegisterPage() {
             { duration: 6000, icon: '⚠️' },
           );
         }
-
       } else if (status === 429) {
         const waitSec = err.response?.data?.waitSec;
         const uid     = err.response?.data?.userId;
@@ -153,7 +176,6 @@ export default function RegisterPage() {
         } else {
           toast.error(message || 'Too many attempts. Please try again later.');
         }
-
       } else {
         toast.error(message || 'Registration failed. Please try again.');
       }
@@ -163,7 +185,6 @@ export default function RegisterPage() {
   };
 
   /* ── Step 2: Verify OTP ─────────────────────────────────────────────── */
-  // Only called explicitly by the submit button — no auto-trigger anywhere.
   const verifyOtp = useCallback(async (otpString: string) => {
     if (isVerifyingRef.current) return;
 
@@ -175,6 +196,7 @@ export default function RegisterPage() {
     const currentUserId = userIdRef.current;
     if (!currentUserId) {
       toast.error('Session lost. Please register again.');
+      goBackToForm();
       return;
     }
 
@@ -206,25 +228,34 @@ export default function RegisterPage() {
       setLoading(false);
       isVerifyingRef.current = false;
     }
-  }, [router, setAuth]);
+  }, [router, setAuth, goBackToForm]);
 
   /* ── OTP input handlers ─────────────────────────────────────────────── */
   const handleOtpChange = (index: number, value: string) => {
     if (value.length > 1)     return;
     if (!/^\d*$/.test(value)) return;
+
     const next = [...otp];
     next[index] = value;
     setOtp(next);
-    // Only move focus to next box — no auto-submit
-    if (value && index < OTP_LENGTH - 1) otpRefs.current[index + 1]?.focus();
+
+    if (value && index < OTP_LENGTH - 1) {
+      otpRefs.current[index + 1]?.focus();
+    }
   };
 
-  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent) => {
+  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Backspace' && !otp[index] && index > 0) {
       otpRefs.current[index - 1]?.focus();
     }
     if (e.key === 'ArrowLeft'  && index > 0)              otpRefs.current[index - 1]?.focus();
     if (e.key === 'ArrowRight' && index < OTP_LENGTH - 1) otpRefs.current[index + 1]?.focus();
+
+    // Enter key submits if all digits filled
+    if (e.key === 'Enter') {
+      const filled = otp.join('');
+      if (filled.length === OTP_LENGTH) verifyOtp(filled);
+    }
   };
 
   const handleOtpPaste = (e: React.ClipboardEvent) => {
@@ -236,7 +267,6 @@ export default function RegisterPage() {
     pasted.split('').forEach((char, i) => { next[i] = char; });
     setOtp(next);
 
-    // Only move focus — no auto-submit on paste
     const nextEmpty  = next.findIndex(d => d === '');
     const focusIndex = nextEmpty === -1 ? OTP_LENGTH - 1 : nextEmpty;
     otpRefs.current[focusIndex]?.focus();
@@ -289,26 +319,6 @@ export default function RegisterPage() {
     const reader = new FileReader();
     reader.onload = () => setAvatar(reader.result as string);
     reader.readAsDataURL(file);
-  };
-
-  /* ── Go back to form ────────────────────────────────────────────────── */
-  const goBackToForm = () => {
-    userIdRef.current          = '';
-    registeredEmailRef.current = '';
-    isVerifyingRef.current     = false;
-
-    if (cooldownRef.current) {
-      clearInterval(cooldownRef.current);
-      cooldownRef.current = null;
-    }
-
-    flushSync(() => {
-      setOtp(Array(OTP_LENGTH).fill(''));
-      setDisplayEmail('');
-      setResendCooldown(0);
-    });
-
-    setStep('form');
   };
 
   /* ─── Render ─────────────────────────────────────────────────────────── */
@@ -416,7 +426,13 @@ export default function RegisterPage() {
                   </label>
                   <div className="relative">
                     <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: 'var(--color-text-muted)' }} />
-                    <input type="text" placeholder="Your full name" autoComplete="name" {...register('name')} style={{ paddingLeft: '2.5rem' }} />
+                    <input
+                      type="text"
+                      placeholder="Your full name"
+                      autoComplete="name"
+                      {...register('name')}
+                      style={{ paddingLeft: '2.5rem' }}
+                    />
                   </div>
                   {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name.message}</p>}
                 </div>
@@ -428,7 +444,13 @@ export default function RegisterPage() {
                   </label>
                   <div className="relative">
                     <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: 'var(--color-text-muted)' }} />
-                    <input type="email" placeholder="your@email.com" autoComplete="email" {...register('email')} style={{ paddingLeft: '2.5rem' }} />
+                    <input
+                      type="email"
+                      placeholder="your@email.com"
+                      autoComplete="email"
+                      {...register('email')}
+                      style={{ paddingLeft: '2.5rem' }}
+                    />
                   </div>
                   {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
                 </div>
@@ -440,7 +462,13 @@ export default function RegisterPage() {
                   </label>
                   <div className="relative">
                     <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: 'var(--color-text-muted)' }} />
-                    <input type="email" placeholder="Re-enter your email" autoComplete="off" {...register('confirmEmail')} style={{ paddingLeft: '2.5rem' }} />
+                    <input
+                      type="email"
+                      placeholder="Re-enter your email"
+                      autoComplete="off"
+                      {...register('confirmEmail')}
+                      style={{ paddingLeft: '2.5rem' }}
+                    />
                   </div>
                   {errors.confirmEmail && <p className="text-red-500 text-xs mt-1">{errors.confirmEmail.message}</p>}
                 </div>
@@ -452,7 +480,13 @@ export default function RegisterPage() {
                   </label>
                   <div className="relative">
                     <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: 'var(--color-text-muted)' }} />
-                    <input type="tel" placeholder="+880 1XXXXXXXXX" autoComplete="tel" {...register('phone')} style={{ paddingLeft: '2.5rem' }} />
+                    <input
+                      type="tel"
+                      placeholder="+880 1XXXXXXXXX"
+                      autoComplete="tel"
+                      {...register('phone')}
+                      style={{ paddingLeft: '2.5rem' }}
+                    />
                   </div>
                   {errors.phone && <p className="text-red-500 text-xs mt-1">{errors.phone.message}</p>}
                 </div>
@@ -464,9 +498,22 @@ export default function RegisterPage() {
                   </label>
                   <div className="relative">
                     <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: 'var(--color-text-muted)' }} />
-                    <input type={showPass ? 'text' : 'password'} placeholder="At least 6 characters" autoComplete="new-password" {...register('password')} style={{ paddingLeft: '2.5rem', paddingRight: '2.75rem' }} />
-                    <button type="button" onClick={() => setShowPass(p => !p)} className="absolute right-3.5 top-1/2 -translate-y-1/2" aria-label={showPass ? 'Hide password' : 'Show password'}>
-                      {showPass ? <EyeOff className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} /> : <Eye className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />}
+                    <input
+                      type={showPass ? 'text' : 'password'}
+                      placeholder="At least 6 characters"
+                      autoComplete="new-password"
+                      {...register('password')}
+                      style={{ paddingLeft: '2.5rem', paddingRight: '2.75rem' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPass(p => !p)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2"
+                      aria-label={showPass ? 'Hide password' : 'Show password'}
+                    >
+                      {showPass
+                        ? <EyeOff className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
+                        : <Eye    className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />}
                     </button>
                   </div>
                   {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password.message}</p>}
@@ -479,9 +526,22 @@ export default function RegisterPage() {
                   </label>
                   <div className="relative">
                     <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: 'var(--color-text-muted)' }} />
-                    <input type={showConfirmPass ? 'text' : 'password'} placeholder="Repeat password" autoComplete="new-password" {...register('confirmPassword')} style={{ paddingLeft: '2.5rem', paddingRight: '2.75rem' }} />
-                    <button type="button" onClick={() => setShowConfirmPass(p => !p)} className="absolute right-3.5 top-1/2 -translate-y-1/2" aria-label={showConfirmPass ? 'Hide confirm password' : 'Show confirm password'}>
-                      {showConfirmPass ? <EyeOff className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} /> : <Eye className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />}
+                    <input
+                      type={showConfirmPass ? 'text' : 'password'}
+                      placeholder="Repeat password"
+                      autoComplete="new-password"
+                      {...register('confirmPassword')}
+                      style={{ paddingLeft: '2.5rem', paddingRight: '2.75rem' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPass(p => !p)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2"
+                      aria-label={showConfirmPass ? 'Hide confirm password' : 'Show confirm password'}
+                    >
+                      {showConfirmPass
+                        ? <EyeOff className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
+                        : <Eye    className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />}
                     </button>
                   </div>
                   {errors.confirmPassword && <p className="text-red-500 text-xs mt-1">{errors.confirmPassword.message}</p>}
@@ -540,14 +600,14 @@ export default function RegisterPage() {
                       className="w-11 h-12 text-center text-lg font-bold rounded-xl transition-all"
                       style={{
                         borderColor: digit ? 'var(--color-brand)' : 'var(--color-border)',
-                        padding: 0,
-                        opacity: loading ? 0.6 : 1,
+                        padding:     0,
+                        opacity:     loading ? 0.6 : 1,
                       }}
                     />
                   ))}
                 </div>
 
-                {/* Submit button — the ONLY way to trigger verify */}
+                {/* Submit button */}
                 <button
                   onClick={() => verifyOtp(otp.join(''))}
                   disabled={loading || otp.join('').length !== OTP_LENGTH}

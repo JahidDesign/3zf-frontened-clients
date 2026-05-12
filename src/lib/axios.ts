@@ -2,7 +2,7 @@ import axios from 'axios';
 import Cookies from 'js-cookie';
 import toast from 'react-hot-toast';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:10000/api';
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || ' https://shrouded-dusk-16339-9777261d797a.herokuapp.com/api';
 
 const ACCESS_TOKEN_EXPIRES_DAYS  = 365;
 const REFRESH_TOKEN_EXPIRES_DAYS = 365;
@@ -51,7 +51,7 @@ export const clearTokens = () => {
   delete api.defaults.headers.common['Authorization'];
 };
 
-// Only force logout when the server explicitly rejects credentials (401/403).
+// Only force logout when the server explicitly rejects credentials.
 // Never logout on network errors, timeouts, or 5xx server errors.
 const forceLogout = () => {
   clearTokens();
@@ -106,13 +106,13 @@ export let _refreshPromise: Promise<boolean> | null = null;
  *
  * Returns:
  *   true  — a valid access token is now set (existing or freshly refreshed)
- *   false — no tokens at all (user is not logged in) OR a network/5xx error
- *           occurred — caller should show the dashboard anyway and let
- *           individual queries retry naturally.
+ *   false — refresh failed due to network/5xx error — caller should show the
+ *           dashboard anyway and let individual queries retry naturally.
  *
- * Never throws. Never force-logouts on network errors or 5xx responses.
- * Only force-logouts when the server explicitly rejects the refresh token
- * with 401 or 403.
+ * Side effects:
+ *   - Calls forceLogout() when the server explicitly rejects the refresh
+ *     token (401, 403, or 400 — i.e. token is expired/invalid on the server).
+ *   - Never throws. Never force-logouts on network errors or 5xx responses.
  */
 export const ensureFreshToken = (): Promise<boolean> => {
   // Re-use an in-flight refresh instead of firing a second one
@@ -127,8 +127,11 @@ export const ensureFreshToken = (): Promise<boolean> => {
     return Promise.resolve(true);
   }
 
-  // No refresh token at all → user is not logged in
-  if (!refreshToken) return Promise.resolve(false);
+  // No refresh token at all → user is genuinely not logged in, redirect
+  if (!refreshToken) {
+    // Don't forceLogout here (no toast needed for a clean logged-out state)
+    return Promise.resolve(false);
+  }
 
   // Access token missing or expired, but we have a refresh token → refresh now
   _refreshPromise = axios
@@ -138,16 +141,25 @@ export const ensureFreshToken = (): Promise<boolean> => {
         saveTokens(data.accessToken, data.refreshToken ?? refreshToken);
         return true;
       }
-      // Server responded but gave no token — treat as "not logged in"
+      // Server responded 2xx but gave no token — treat as expired session
+      forceLogout();
       return false;
     })
     .catch((err) => {
       const status = err?.response?.status;
-      // Server explicitly rejected the refresh token → must logout
-      if (status === 401 || status === 403) {
+
+      // Any of these mean the refresh token is explicitly rejected by the server
+      // 400 → malformed / expired token body
+      // 401 → unauthorized
+      // 403 → forbidden (token revoked / blacklisted)
+      if (status === 400 || status === 401 || status === 403) {
         forceLogout();
+        return false;
       }
-      // Network error, timeout, 5xx, etc. → do NOT logout, let the caller decide
+
+      // Network error, timeout, 5xx, etc.
+      // Do NOT logout — server may be temporarily down.
+      // Let the caller show the UI; individual queries will retry.
       return false;
     })
     .finally(() => {
@@ -182,9 +194,12 @@ api.interceptors.response.use(
     const status = error.response?.status;
     const code   = error.response?.data?.code;
 
+    // Treat ANY 401 as a token problem — with or without a specific error code.
+    // This handles backends that return plain 401s without a code field.
     const isTokenProblem =
       status === 401 &&
-      (code === 'TOKEN_EXPIRED' ||
+      (!code ||
+       code === 'TOKEN_EXPIRED' ||
        code === 'NO_TOKEN'      ||
        code === 'INVALID_TOKEN');
 
@@ -197,7 +212,10 @@ api.interceptors.response.use(
     if (_refreshPromise) {
       try {
         const ok = await _refreshPromise;
-        if (!ok) return Promise.reject(error);
+        if (!ok) {
+          // ensureFreshToken already called forceLogout if appropriate
+          return Promise.reject(error);
+        }
         orig.headers.Authorization = `Bearer ${getAccessToken()}`;
         return api(orig);
       } catch {
@@ -223,8 +241,9 @@ api.interceptors.response.use(
     try {
       const rt = getRefreshToken();
       if (!rt) {
-        // No refresh token at all — force logout is appropriate here
+        // No refresh token — session is fully gone, force logout
         forceLogout();
+        processQueue(error, null);
         return Promise.reject(error);
       }
 
@@ -234,19 +253,29 @@ api.interceptors.response.use(
         { withCredentials: true },
       );
 
-      saveTokens(data.accessToken, data.refreshToken);
+      if (!data?.accessToken) {
+        // 2xx but no token in response — treat as rejected
+        forceLogout();
+        processQueue(error, null);
+        return Promise.reject(error);
+      }
+
+      saveTokens(data.accessToken, data.refreshToken ?? rt);
       processQueue(null, data.accessToken);
       orig.headers.Authorization = `Bearer ${data.accessToken}`;
       return api(orig);
 
     } catch (err: any) {
       processQueue(err, null);
+
       const errStatus = err?.response?.status;
-      // Only force logout if server explicitly rejected the refresh token
-      if (errStatus === 401 || errStatus === 403) {
+
+      // 400, 401, 403 → refresh token is explicitly rejected, must logout
+      if (errStatus === 400 || errStatus === 401 || errStatus === 403) {
         forceLogout();
       }
       // Network error / 5xx during refresh → reject silently, no logout
+
       return Promise.reject(err);
     } finally {
       isRefreshing = false;
