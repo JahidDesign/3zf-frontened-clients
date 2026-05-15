@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Menu, X, Sun, Moon,
   User, LogOut, Settings, Bell, ShoppingCart, Lock,
+  MessageCircle,
 } from 'lucide-react';
 import Image from 'next/image';
 import useAuthStore from '@/store/authStore';
@@ -338,11 +339,11 @@ export default function MainNavbar() {
           {isAuthenticated && user ? (
             <>
               <Link
-                href="/supershop/cart"
+                href="/community/messages"
                 className="btn-ghost w-9 h-9 flex items-center justify-center p-0"
-                title={t.supershop.cart}
+               
               >
-                <ShoppingCart className="w-4 h-4" />
+                <MessageCircle className="w-4 h-4" />
               </Link>
 
               <Link
