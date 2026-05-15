@@ -3,7 +3,6 @@ import { useState, useEffect } from 'react';
 import { useInView } from 'react-intersection-observer';
 import CreatePost from '@/components/community/CreatePost';
 import PostCard from '@/components/community/PostCard';
-import StoryRow from '@/components/community/StoryRow';
 import FriendSuggestions from '@/components/community/FriendSuggestions';
 import { useT } from '@/hooks/useT';
 import api from '@/lib/api';
@@ -45,7 +44,7 @@ export default function CommunityFeedPage() {
 
   return (
     <div className="max-w-[640px] mx-auto pb-10">
-      <StoryRow />
+     
       <CreatePost onPostCreated={handlePostCreated} />
 
       <div className="space-y-3 mt-3">

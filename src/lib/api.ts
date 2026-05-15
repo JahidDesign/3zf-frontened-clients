@@ -11,8 +11,8 @@ import toast from 'react-hot-toast';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://threezf-backend-servers.onrender.com/api';
 
-const ACCESS_TOKEN_EXPIRES_DAYS  = 1;
-const REFRESH_TOKEN_EXPIRES_DAYS = 30;
+const ACCESS_TOKEN_EXPIRES_DAYS  = 365;
+const REFRESH_TOKEN_EXPIRES_DAYS = 365;
 const STORAGE_KEY = '3zf-auth';
 
 // ─── Axios instance ───────────────────────────────────────────────────────────

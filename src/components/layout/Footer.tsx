@@ -23,7 +23,7 @@ export default function MainFooter() {
                       </span>
                     </Link>
             <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-              Three Zeros of Freedom — A unified platform for community, organisation, and commerce.
+              Three Zeros of Freedom —  3ZF Management Solution Ltd.
             </p>
           </div>
           {[

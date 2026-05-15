@@ -2,8 +2,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { UserPlus, UserCheck, UserMinus, Users, Search } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { UserPlus, UserCheck, UserMinus, Users, Search, Clock } from 'lucide-react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import useAuthStore from '@/store/authStore';
@@ -16,6 +15,7 @@ export default function FriendsPage() {
   const [friends, setFriends] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [sentIds, setSentIds] = useState<Set<string>>(new Set()); // ← track sent requests
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -57,8 +57,16 @@ export default function FriendsPage() {
   const sendRequest = async (userId: string) => {
     try {
       await api.post(`/friends/request/${userId}`);
-      setSuggestions(s => s.filter((u: any) => u._id !== userId));
+      setSentIds(prev => new Set(prev).add(userId)); // ← mark as sent, keep card visible
       toast.success('Friend request sent!');
+    } catch (e: any) { toast.error(e.response?.data?.message || 'Failed'); }
+  };
+
+  const cancelRequest = async (userId: string) => {
+    try {
+      await api.post(`/friends/cancel/${userId}`); // adjust endpoint if different
+      setSentIds(prev => { const s = new Set(prev); s.delete(userId); return s; });
+      toast.success('Request cancelled');
     } catch (e: any) { toast.error(e.response?.data?.message || 'Failed'); }
   };
 
@@ -72,20 +80,25 @@ export default function FriendsPage() {
   };
 
   const tabs: { key: FriendsTab; label: string; count?: number }[] = [
-    { key: 'friends', label: 'All Friends', count: friends.length },
-    { key: 'requests', label: 'Requests', count: requests.length },
+    { key: 'friends',     label: 'All Friends', count: friends.length },
+    { key: 'requests',    label: 'Requests',    count: requests.length },
     { key: 'suggestions', label: 'Suggestions' },
   ];
 
   const filteredFriends = friends.filter((f: any) =>
-    !search || f.name?.toLowerCase().includes(search.toLowerCase()) || f.username?.toLowerCase().includes(search.toLowerCase())
+    !search ||
+    f.name?.toLowerCase().includes(search.toLowerCase()) ||
+    f.username?.toLowerCase().includes(search.toLowerCase())
   );
 
   const UserCard = ({ u, actions }: { u: any; actions: React.ReactNode }) => (
     <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="card flex items-center gap-3">
       <Link href={`/community/profile/${u.username}`} className="flex-shrink-0">
-        <img src={u.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(u.name)}&background=6B46C1&color=fff`}
-          alt="" className="w-14 h-14 rounded-full object-cover" />
+        <img
+          src={u.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(u.name)}&background=6B46C1&color=fff`}
+          alt=""
+          className="w-14 h-14 rounded-full object-cover"
+        />
       </Link>
       <div className="flex-1 min-w-0">
         <Link href={`/community/profile/${u.username}`}>
@@ -143,15 +156,21 @@ export default function FriendsPage() {
         </div>
       ) : (
         <div className="space-y-3">
+
           {/* FRIENDS */}
           {tab === 'friends' && (
             filteredFriends.length === 0
-              ? <div className="card text-center py-14"><Users className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--color-border)' }} /><p style={{ color: 'var(--color-text-secondary)' }}>{search ? 'No results' : 'No friends yet'}</p></div>
+              ? <div className="card text-center py-14">
+                  <Users className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--color-border)' }} />
+                  <p style={{ color: 'var(--color-text-secondary)' }}>{search ? 'No results' : 'No friends yet'}</p>
+                </div>
               : filteredFriends.map((f: any) => (
                 <UserCard key={f._id} u={f} actions={
                   <>
-                    <Link href={`/community/messages`} className="btn-primary text-xs px-3 py-1.5">Message</Link>
-                    <button onClick={() => unfriend(f._id)} className="btn-ghost text-xs px-2 py-1.5 text-red-500"><UserMinus className="w-4 h-4" /></button>
+                    <Link href="/community/messages" className="btn-primary text-xs px-3 py-1.5">Message</Link>
+                    <button onClick={() => unfriend(f._id)} className="btn-ghost text-xs px-2 py-1.5 text-red-500">
+                      <UserMinus className="w-4 h-4" />
+                    </button>
                   </>
                 } />
               ))
@@ -160,11 +179,16 @@ export default function FriendsPage() {
           {/* REQUESTS */}
           {tab === 'requests' && (
             requests.length === 0
-              ? <div className="card text-center py-14"><UserPlus className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--color-border)' }} /><p style={{ color: 'var(--color-text-secondary)' }}>No pending requests</p></div>
+              ? <div className="card text-center py-14">
+                  <UserPlus className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--color-border)' }} />
+                  <p style={{ color: 'var(--color-text-secondary)' }}>No pending requests</p>
+                </div>
               : requests.map((u: any) => (
                 <UserCard key={u._id} u={u} actions={
                   <>
-                    <button onClick={() => acceptRequest(u._id)} className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1"><UserCheck className="w-3.5 h-3.5" /> Accept</button>
+                    <button onClick={() => acceptRequest(u._id)} className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1">
+                      <UserCheck className="w-3.5 h-3.5" /> Accept
+                    </button>
                     <button onClick={() => declineRequest(u._id)} className="btn-secondary text-xs px-3 py-1.5">Decline</button>
                   </>
                 } />
@@ -174,15 +198,35 @@ export default function FriendsPage() {
           {/* SUGGESTIONS */}
           {tab === 'suggestions' && (
             suggestions.length === 0
-              ? <div className="card text-center py-14"><Users className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--color-border)' }} /><p style={{ color: 'var(--color-text-secondary)' }}>No suggestions right now</p></div>
+              ? <div className="card text-center py-14">
+                  <Users className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--color-border)' }} />
+                  <p style={{ color: 'var(--color-text-secondary)' }}>No suggestions right now</p>
+                </div>
               : suggestions.map((u: any) => (
                 <UserCard key={u._id} u={u} actions={
-                  <button onClick={() => sendRequest(u._id)} className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1">
-                    <UserPlus className="w-3.5 h-3.5" /> Add
-                  </button>
+                  sentIds.has(u._id) ? (
+                    // ← Request sent: show "Sent" state + cancel option
+                    <button
+                      onClick={() => cancelRequest(u._id)}
+                      className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1"
+                      title="Cancel request"
+                    >
+                      <Clock className="w-3.5 h-3.5" />
+                      Sent
+                    </button>
+                  ) : (
+                    // ← Not sent yet: show Add button
+                    <button
+                      onClick={() => sendRequest(u._id)}
+                      className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1"
+                    >
+                      <UserPlus className="w-3.5 h-3.5" /> Add
+                    </button>
+                  )
                 } />
               ))
           )}
+
         </div>
       )}
     </div>
