@@ -8,7 +8,7 @@ import {
   ChevronLeft, ChevronRight, Eye, AlertCircle, BadgeCheck,
   Loader2, RefreshCw, User, CreditCard, Phone, MapPin,
   Calendar, FileText, ChevronUp, ChevronDown, X,
-  Download, SlidersHorizontal,
+  Download, SlidersHorizontal, Trash2, Banknote,
 } from 'lucide-react';
 import api from '@/lib/axios';
 import toast from 'react-hot-toast';
@@ -22,28 +22,33 @@ type SortKey   = 'name' | 'submittedAt' | 'status' | 'region';
 type SortDir   = 'asc' | 'desc';
 
 interface KYCRecord {
-  _id:          string;
-  userId:       { _id: string; name: string; email: string };
-  name:         string;
-  dob:          string;
-  age:          string;
-  gender:       'male' | 'female' | 'other';
-  fatherName:   string;
-  motherName:   string;
-  phone:        string;
-  email?:       string;
-  address:      string;
-  region:       string;
-  idType:       'nid' | 'passport' | 'birth_certificate';
-  nidPassport:  string;
-  status:       KYCStatus;
-  adminNote?:   string;
-  submittedAt:  string;
-  reviewedAt?:  string;
-  reviewedBy?:  { _id: string; name: string };
-  photo?:       { url: string; publicId: string };
-  nidFront?:    { url: string; publicId: string };
-  nidBack?:     { url: string; publicId: string };
+  _id:           string;
+  userId:        { _id: string; name: string; email: string };
+  name:          string;
+  dob:           string;
+  age:           string;
+  gender:        'male' | 'female' | 'other';
+  fatherName:    string;
+  motherName:    string;
+  phone:         string;
+  email?:        string;
+  address:       string;
+  region:        string;
+  idType:        'nid' | 'passport' | 'birth_certificate';
+  nidPassport:   string;
+  status:        KYCStatus;
+  adminNote?:    string;
+  submittedAt:   string;
+  reviewedAt?:   string;
+  reviewedBy?:   { _id: string; name: string };
+  photo?:        { url: string; publicId: string };
+  nidFront?:     { url: string; publicId: string };
+  nidBack?:      { url: string; publicId: string };
+  // ── Payment fields ──────────────────────────────────────
+  paymentMethod?: string;
+  senderNumber?:  string;
+  transactionId?: string;
+  paidAmount?:    string;
 }
 
 interface KYCListResponse {
@@ -59,6 +64,13 @@ interface KYCListResponse {
 // ─────────────────────────────────────────────────────────────
 
 const PER_PAGE = 10;
+
+const PAYMENT_METHODS = [
+  { id: 'bkash',  label: 'বিকাশ'            },
+  { id: 'nagad',  label: 'নগদ'              },
+  { id: 'rocket', label: 'রকেট'             },
+  { id: 'bank',   label: 'ব্যাংক ট্রান্সফার' },
+] as const;
 
 const STATUS_CONFIG = {
   pending:  { label: 'অপেক্ষমান',    color: 'text-amber-700 dark:text-amber-400',  bg: 'bg-amber-50 dark:bg-amber-900/20',  dot: 'bg-amber-400',  icon: Clock        },
@@ -79,7 +91,7 @@ const GENDER_LABELS = {
 } as const;
 
 // ─────────────────────────────────────────────────────────────
-// Small helpers
+// Helpers
 // ─────────────────────────────────────────────────────────────
 
 function initials(name: string) {
@@ -98,13 +110,15 @@ function avatarColor(name: string) {
   return AVATAR_COLORS[name.charCodeAt(0) % AVATAR_COLORS.length];
 }
 
+function paymentLabel(id?: string) {
+  return PAYMENT_METHODS.find(m => m.id === id)?.label ?? id ?? '—';
+}
+
 // ─────────────────────────────────────────────────────────────
 // Stat Card
 // ─────────────────────────────────────────────────────────────
 
-function StatCard({
-  label, value, icon: Icon, color,
-}: {
+function StatCard({ label, value, icon: Icon, color }: {
   label: string; value: number; icon: React.ElementType; color: string;
 }) {
   return (
@@ -138,9 +152,7 @@ function StatusBadge({ status }: { status: KYCStatus }) {
 // Sort Header
 // ─────────────────────────────────────────────────────────────
 
-function SortTh({
-  label, sortK, current, dir, onClick, className = '',
-}: {
+function SortTh({ label, sortK, current, dir, onClick, className = '' }: {
   label: string; sortK: SortKey; current: SortKey; dir: SortDir;
   onClick: (k: SortKey) => void; className?: string;
 }) {
@@ -148,7 +160,7 @@ function SortTh({
   return (
     <th
       onClick={() => onClick(sortK)}
-      className={`px-3 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 
+      className={`px-3 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400
         cursor-pointer select-none hover:text-gray-800 dark:hover:text-gray-200 whitespace-nowrap
         transition-colors ${className}`}
     >
@@ -171,13 +183,12 @@ function SortTh({
 // Detail Modal
 // ─────────────────────────────────────────────────────────────
 
-function DetailModal({
-  kyc, onClose, onApprove, onReject, isPending,
-}: {
-  kyc: KYCRecord;
+function DetailModal({ kyc, onClose, onApprove, onReject, onDelete, isPending }: {
+  kyc:       KYCRecord;
   onClose:   () => void;
   onApprove: (id: string) => void;
   onReject:  (id: string, note: string) => void;
+  onDelete:  (id: string) => void;
   isPending: boolean;
 }) {
   const [note, setNote] = useState(kyc.adminNote ?? '');
@@ -193,13 +204,27 @@ function DetailModal({
           <h2 className="font-black text-gray-900 dark:text-white flex items-center gap-2">
             <FileText className="w-4 h-4 text-blue-500" /> KYC বিস্তারিত
           </h2>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center
-              text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 transition"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Delete from modal */}
+            <button
+              onClick={() => {
+                if (confirm('এই KYC স্থায়ীভাবে মুছে ফেলবেন?')) onDelete(kyc._id);
+              }}
+              disabled={isPending}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-50 dark:bg-red-900/20
+                text-red-500 dark:text-red-400 text-xs font-semibold hover:bg-red-100 dark:hover:bg-red-900/40
+                transition disabled:opacity-50"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> মুছুন
+            </button>
+            <button
+              onClick={onClose}
+              className="w-8 h-8 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center
+                text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 transition"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         <div className="p-5 space-y-5">
@@ -242,7 +267,7 @@ function DetailModal({
               { icon: CreditCard, label: 'ID নম্বর',   value: kyc.nidPassport    },
               { icon: MapPin,     label: 'ঠিকানা',     value: kyc.address, full: true },
             ].map(item => (
-              <div key={item.label} className={`bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3 ${item.full ? 'col-span-2' : ''}`}>
+              <div key={item.label} className={`bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3 ${(item as any).full ? 'col-span-2' : ''}`}>
                 <div className="flex items-center gap-1.5 mb-0.5">
                   <item.icon className="w-3 h-3 text-gray-400" />
                   <p className="text-xs text-gray-400 font-medium">{item.label}</p>
@@ -251,6 +276,28 @@ function DetailModal({
               </div>
             ))}
           </div>
+
+          {/* ── Payment info ── */}
+          {(kyc.paymentMethod || kyc.senderNumber || kyc.transactionId) && (
+            <div>
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-1.5">
+                <Banknote className="w-3.5 h-3.5" /> পেমেন্ট তথ্য
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { label: 'পদ্ধতি',         value: paymentLabel(kyc.paymentMethod) },
+                  { label: 'পেমেন্ট নম্বর', value: kyc.senderNumber  ?? '—' },
+                  { label: 'Transaction ID', value: kyc.transactionId ?? '—' },
+                  { label: 'পরিমাণ',         value: kyc.paidAmount ? `৳${kyc.paidAmount}` : '—' },
+                ].map(item => (
+                  <div key={item.label} className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3">
+                    <p className="text-xs text-gray-400 font-medium mb-0.5">{item.label}</p>
+                    <p className="text-gray-800 dark:text-gray-200 font-semibold text-sm font-mono">{item.value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* NID images */}
           {(kyc.nidFront?.url || kyc.nidBack?.url) && (
@@ -285,7 +332,6 @@ function DetailModal({
             </div>
           )}
 
-          {/* Admin reviewer */}
           {kyc.reviewedBy && (
             <p className="text-xs text-gray-400">
               পর্যালোচক: <span className="font-semibold text-gray-600 dark:text-gray-300">{kyc.reviewedBy.name}</span>
@@ -342,7 +388,6 @@ function DetailModal({
 export default function KYCAdminPage() {
   const qc = useQueryClient();
 
-  // ── Filters & pagination state ─────────────────────────────
   const [search,       setSearch]       = useState('');
   const [statusFilter, setStatusFilter] = useState<KYCStatus | 'all'>('all');
   const [regionFilter, setRegionFilter] = useState('');
@@ -353,8 +398,6 @@ export default function KYCAdminPage() {
   const [selected,     setSelected]     = useState<KYCRecord | null>(null);
   const [showFilters,  setShowFilters]  = useState(false);
 
-  // ── Fetch list ─────────────────────────────────────────────
-  // ✅ FIXED: was '/kyc/admin/list' → now '/admin/kyc'
   const { data, isLoading, isFetching, refetch } = useQuery<KYCListResponse>({
     queryKey: ['admin-kyc-list', { search, statusFilter, regionFilter, idTypeFilter, sortKey, sortDir, page }],
     queryFn:  () => api.get('/admin/kyc', {
@@ -372,22 +415,17 @@ export default function KYCAdminPage() {
     placeholderData: prev => prev,
   });
 
-  // ── Stats ──────────────────────────────────────────────────
-  // ✅ FIXED: was '/kyc/admin/stats' → now '/admin/kyc/stats'
   const { data: statsData } = useQuery<{ pending: number; approved: number; rejected: number; total: number }>({
     queryKey: ['admin-kyc-stats'],
     queryFn:  () => api.get('/admin/kyc/stats').then(r => r.data),
   });
 
-  // ── Sort handler ───────────────────────────────────────────
   const handleSort = useCallback((k: SortKey) => {
     if (sortKey === k) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     else { setSortKey(k); setSortDir('desc'); }
     setPage(1);
   }, [sortKey]);
 
-  // ── Approve mutation ───────────────────────────────────────
-  // ✅ FIXED: was '/kyc/:id/approve' → now '/admin/kyc/:id/approve'
   const approveMutation = useMutation({
     mutationFn: (id: string) => api.patch(`/admin/kyc/${id}/approve`),
     onSuccess: () => {
@@ -399,8 +437,6 @@ export default function KYCAdminPage() {
     onError: (err: any) => toast.error(err?.response?.data?.message ?? 'অনুমোদন ব্যর্থ'),
   });
 
-  // ── Reject mutation ────────────────────────────────────────
-  // ✅ FIXED: was '/kyc/:id/reject' → now '/admin/kyc/:id/reject'
   const rejectMutation = useMutation({
     mutationFn: ({ id, note }: { id: string; note: string }) =>
       api.patch(`/admin/kyc/${id}/reject`, { adminNote: note }),
@@ -413,18 +449,30 @@ export default function KYCAdminPage() {
     onError: (err: any) => toast.error(err?.response?.data?.message ?? 'প্রত্যাখ্যান ব্যর্থ'),
   });
 
-  const isMutating = approveMutation.isPending || rejectMutation.isPending;
+  // ── NEW: Delete mutation ───────────────────────────────────
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/admin/kyc/${id}`),
+    onSuccess: () => {
+      toast.success('KYC মুছে ফেলা হয়েছে');
+      qc.invalidateQueries({ queryKey: ['admin-kyc-list'] });
+      qc.invalidateQueries({ queryKey: ['admin-kyc-stats'] });
+      setSelected(null);
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'মুছতে ব্যর্থ'),
+  });
+
+  const isMutating = approveMutation.isPending || rejectMutation.isPending || deleteMutation.isPending;
 
   const kycs       = data?.kycs       ?? [];
   const totalPages = data?.totalPages ?? 1;
   const totalCount = data?.totalCount ?? 0;
 
-  // ── CSV Export ─────────────────────────────────────────────
   const exportCSV = () => {
     if (!kycs.length) return;
-    const headers = ['নাম', 'ফোন', 'বিভাগ', 'ID ধরন', 'ID নম্বর', 'অবস্থা', 'জমার তারিখ'];
+    const headers = ['নাম', 'ফোন', 'বিভাগ', 'ID ধরন', 'ID নম্বর', 'পেমেন্ট পদ্ধতি', 'পেমেন্ট নম্বর', 'Trx ID', 'অবস্থা', 'জমার তারিখ'];
     const rows = kycs.map(r => [
       r.name, r.phone, r.region, ID_TYPE_LABELS[r.idType], r.nidPassport,
+      paymentLabel(r.paymentMethod), r.senderNumber ?? '', r.transactionId ?? '',
       STATUS_CONFIG[r.status].label,
       format(new Date(r.submittedAt), 'dd/MM/yyyy'),
     ]);
@@ -436,7 +484,6 @@ export default function KYCAdminPage() {
     URL.revokeObjectURL(url);
   };
 
-  // ── Inline quick actions ───────────────────────────────────
   const handleQuickApprove = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     if (confirm('এই KYC অনুমোদন করবেন?')) approveMutation.mutate(id);
@@ -448,11 +495,17 @@ export default function KYCAdminPage() {
     rejectMutation.mutate({ id, note });
   };
 
+  // ── NEW: Quick delete handler ──────────────────────────────
+  const handleQuickDelete = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (confirm('এই KYC স্থায়ীভাবে মুছে ফেলবেন?')) deleteMutation.mutate(id);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 p-4 sm:p-6">
       <div className="max-w-7xl mx-auto space-y-5">
 
-        {/* ── Page header ─────────────────────────────────── */}
+        {/* Page header */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-blue-500/10 flex items-center justify-center">
@@ -483,7 +536,7 @@ export default function KYCAdminPage() {
           </div>
         </div>
 
-        {/* ── Stats ───────────────────────────────────────── */}
+        {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <StatCard label="মোট আবেদন"    value={statsData?.total    ?? 0} icon={ShieldCheck} color="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"    />
           <StatCard label="অপেক্ষমান"    value={statsData?.pending  ?? 0} icon={Clock}       color="bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400" />
@@ -491,10 +544,9 @@ export default function KYCAdminPage() {
           <StatCard label="প্রত্যাখ্যাত" value={statsData?.rejected ?? 0} icon={XCircle}     color="bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"          />
         </div>
 
-        {/* ── Filters bar ─────────────────────────────────── */}
+        {/* Filters bar */}
         <div className="card p-4 space-y-3">
           <div className="flex gap-2 flex-wrap">
-            {/* Search */}
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
               <input
@@ -504,8 +556,6 @@ export default function KYCAdminPage() {
                 className="input w-full pl-9 py-2 text-sm"
               />
             </div>
-
-            {/* Status tabs */}
             <div className="flex bg-gray-100 dark:bg-gray-800 rounded-xl p-1 gap-1">
               {(['all', 'pending', 'approved', 'rejected'] as const).map(s => (
                 <button
@@ -521,8 +571,6 @@ export default function KYCAdminPage() {
                 </button>
               ))}
             </div>
-
-            {/* More filters toggle */}
             <button
               onClick={() => setShowFilters(v => !v)}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition ${
@@ -535,7 +583,6 @@ export default function KYCAdminPage() {
             </button>
           </div>
 
-          {/* Extended filters */}
           {showFilters && (
             <div className="flex gap-3 flex-wrap border-t border-gray-100 dark:border-gray-800 pt-3">
               <select
@@ -570,7 +617,7 @@ export default function KYCAdminPage() {
           )}
         </div>
 
-        {/* ── Table ───────────────────────────────────────── */}
+        {/* Table */}
         <div className="card overflow-hidden p-0">
           {isLoading ? (
             <div className="flex items-center justify-center gap-3 py-16">
@@ -585,16 +632,20 @@ export default function KYCAdminPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px]">
+              <table className="w-full min-w-[1100px]">
                 <thead>
                   <tr className="border-b border-gray-100 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-800/40">
-                    <SortTh label="আবেদনকারী" sortK="name"       current={sortKey} dir={sortDir} onClick={handleSort} className="pl-4 w-[22%]" />
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 w-[10%]">ফোন</th>
-                    <SortTh label="বিভাগ"     sortK="region"      current={sortKey} dir={sortDir} onClick={handleSort} className="w-[10%]" />
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 w-[10%]">ID ধরন</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 w-[14%]">ID নম্বর</th>
-                    <SortTh label="অবস্থা"    sortK="status"      current={sortKey} dir={sortDir} onClick={handleSort} className="w-[11%]" />
-                    <SortTh label="তারিখ"     sortK="submittedAt" current={sortKey} dir={sortDir} onClick={handleSort} className="w-[12%]" />
+                    <SortTh label="আবেদনকারী"  sortK="name"       current={sortKey} dir={sortDir} onClick={handleSort} className="pl-4 w-[18%]" />
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 w-[9%]">ফোন</th>
+                    <SortTh label="বিভাগ"       sortK="region"      current={sortKey} dir={sortDir} onClick={handleSort} className="w-[8%]" />
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 w-[8%]">ID ধরন</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 w-[10%]">ID নম্বর</th>
+                    <SortTh label="অবস্থা"      sortK="status"      current={sortKey} dir={sortDir} onClick={handleSort} className="w-[9%]" />
+                    <SortTh label="তারিখ"        sortK="submittedAt" current={sortKey} dir={sortDir} onClick={handleSort} className="w-[9%]" />
+                    {/* ── NEW payment columns ── */}
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 w-[9%]">পেমেন্ট</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 w-[9%]">পেমেন্ট নম্বর</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 w-[10%]">Trx ID</th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 w-[11%]">কার্যক্রম</th>
                   </tr>
                 </thead>
@@ -610,8 +661,7 @@ export default function KYCAdminPage() {
                         <div className="flex items-center gap-2.5">
                           {kyc.photo?.url ? (
                             <img
-                              src={kyc.photo.url}
-                              alt={kyc.name}
+                              src={kyc.photo.url} alt={kyc.name}
                               className="w-8 h-8 rounded-xl object-cover ring-1 ring-gray-200 dark:ring-gray-700 shrink-0"
                             />
                           ) : (
@@ -626,25 +676,15 @@ export default function KYCAdminPage() {
                         </div>
                       </td>
 
-                      {/* Phone */}
-                      <td className="px-3 py-3 text-sm text-gray-600 dark:text-gray-300 font-mono">
-                        {kyc.phone}
-                      </td>
+                      <td className="px-3 py-3 text-sm text-gray-600 dark:text-gray-300 font-mono">{kyc.phone}</td>
+                      <td className="px-3 py-3 text-sm text-gray-600 dark:text-gray-300">{kyc.region}</td>
 
-                      {/* Region */}
-                      <td className="px-3 py-3 text-sm text-gray-600 dark:text-gray-300">
-                        {kyc.region}
-                      </td>
-
-                      {/* ID type */}
                       <td className="px-3 py-3">
-                        <span className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300
-                          px-2 py-1 rounded-lg font-medium">
+                        <span className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 px-2 py-1 rounded-lg font-medium">
                           {ID_TYPE_LABELS[kyc.idType]}
                         </span>
                       </td>
 
-                      {/* ID number */}
                       <td className="px-3 py-3">
                         <span className="font-mono text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/60
                           border border-gray-200 dark:border-gray-700 rounded-md px-2 py-0.5">
@@ -652,22 +692,47 @@ export default function KYCAdminPage() {
                         </span>
                       </td>
 
-                      {/* Status */}
-                      <td className="px-3 py-3">
-                        <StatusBadge status={kyc.status} />
-                      </td>
+                      <td className="px-3 py-3"><StatusBadge status={kyc.status} /></td>
 
-                      {/* Date */}
                       <td className="px-3 py-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
                         {format(new Date(kyc.submittedAt), 'dd MMM yyyy')}
                         <br />
                         <span className="text-gray-400">{format(new Date(kyc.submittedAt), 'HH:mm')}</span>
                       </td>
 
+                      {/* ── NEW: Payment method cell ── */}
+                      <td className="px-3 py-3">
+                        {kyc.paymentMethod ? (
+                          <span className="text-xs bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300
+                            px-2 py-1 rounded-lg font-medium">
+                            {paymentLabel(kyc.paymentMethod)}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
+                      </td>
+
+                      {/* ── NEW: Sender number cell ── */}
+                      <td className="px-3 py-3 font-mono text-xs text-gray-600 dark:text-gray-300">
+                        {kyc.senderNumber ?? <span className="text-gray-400">—</span>}
+                      </td>
+
+                      {/* ── NEW: Transaction ID cell ── */}
+                      <td className="px-3 py-3">
+                        {kyc.transactionId ? (
+                          <span className="font-mono text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/60
+                            border border-gray-200 dark:border-gray-700 rounded-md px-2 py-0.5 uppercase">
+                            {kyc.transactionId.length > 10 ? kyc.transactionId.slice(0, 10) + '…' : kyc.transactionId}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
+                      </td>
+
                       {/* Actions */}
                       <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
                         <div className="flex items-center gap-1.5">
-                          {kyc.status === 'pending' ? (
+                          {kyc.status === 'pending' && (
                             <>
                               <button
                                 onClick={e => handleQuickApprove(e, kyc._id)}
@@ -688,7 +753,7 @@ export default function KYCAdminPage() {
                                 <XCircle className="w-3.5 h-3.5" />
                               </button>
                             </>
-                          ) : null}
+                          )}
                           <button
                             onClick={e => { e.stopPropagation(); setSelected(kyc); }}
                             title="বিস্তারিত"
@@ -696,6 +761,16 @@ export default function KYCAdminPage() {
                               hover:bg-gray-200 dark:hover:bg-gray-700 flex items-center justify-center transition"
                           >
                             <Eye className="w-3.5 h-3.5" />
+                          </button>
+                          {/* ── NEW: Delete button ── */}
+                          <button
+                            onClick={e => handleQuickDelete(e, kyc._id)}
+                            disabled={isMutating}
+                            title="মুছুন"
+                            className="w-7 h-7 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-400 dark:text-red-500
+                              hover:bg-red-100 dark:hover:bg-red-900/40 flex items-center justify-center transition disabled:opacity-50"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </td>
@@ -707,7 +782,7 @@ export default function KYCAdminPage() {
           )}
         </div>
 
-        {/* ── Pagination ───────────────────────────────────── */}
+        {/* Pagination — unchanged */}
         {totalPages > 1 && (
           <div className="flex items-center justify-between flex-wrap gap-3">
             <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -724,7 +799,6 @@ export default function KYCAdminPage() {
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
-
               {Array.from({ length: totalPages }, (_, i) => i + 1)
                 .filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
                 .reduce<(number | '...')[]>((acc, p, i, arr) => {
@@ -750,7 +824,6 @@ export default function KYCAdminPage() {
                   )
                 )
               }
-
               <button
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
@@ -765,13 +838,14 @@ export default function KYCAdminPage() {
         )}
       </div>
 
-      {/* ── Detail Modal ─────────────────────────────────────── */}
+      {/* Detail Modal */}
       {selected && (
         <DetailModal
           kyc={selected}
           onClose={() => setSelected(null)}
           onApprove={id => approveMutation.mutate(id)}
           onReject={(id, note) => rejectMutation.mutate({ id, note })}
+          onDelete={id => deleteMutation.mutate(id)}
           isPending={isMutating}
         />
       )}

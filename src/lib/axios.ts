@@ -1,6 +1,13 @@
+/**
+ * lib/api.ts
+ *
+ * POLICY: Session expire হলে কখনো force logout বা redirect করা হবে না।
+ *         Token refresh fail হলে শুধু request reject হবে — user যেখানে
+ *         আছে সেখানেই থাকবে। কোনো toast, কোনো redirect নেই।
+ */
+
 import axios from 'axios';
 import Cookies from 'js-cookie';
-import toast from 'react-hot-toast';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://shrouded-dusk-16339-9777261d797a.herokuapp.com/api';
 
@@ -21,13 +28,12 @@ export const saveTokens = (accessToken: string, refreshToken: string) => {
   Cookies.set('accessToken',  accessToken,  { expires: ACCESS_TOKEN_EXPIRES_DAYS,  sameSite: 'lax' });
   Cookies.set('refreshToken', refreshToken, { expires: REFRESH_TOKEN_EXPIRES_DAYS, sameSite: 'lax' });
 
-  // ✅ Zustand store bhi sync karo — yahi auto-logout ka root cause tha
   try {
     const raw    = localStorage.getItem(STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : { state: {}, version: 0 };
     parsed.state.accessToken     = accessToken;
     parsed.state.refreshToken    = refreshToken;
-    parsed.state.isAuthenticated = true;          // ← yeh missing tha!
+    parsed.state.isAuthenticated = true;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
   } catch {}
 
@@ -51,12 +57,6 @@ export const clearTokens = () => {
   } catch {}
 
   delete api.defaults.headers.common['Authorization'];
-};
-
-const forceLogout = () => {
-  clearTokens();
-  toast.error('Session expired. Please log in again.');
-  window.location.href = '/login';
 };
 
 export const getAccessToken = (): string | null => {
@@ -91,13 +91,13 @@ const isTokenExpired = (token: string): boolean => {
 };
 
 // ─── Single Global Refresh Promise ───────────────────────────────────────────
-// ✅ KEY FIX: Ek hi refresh promise — api.ts aur useAuthStore dono yahi use karein
 
 export let _refreshPromise: Promise<boolean> | null = null;
 
 /**
- * SINGLE refresh function — useAuthStore.refreshAccessToken() ko
- * is function ki taraf point karo, apna alag implementation mat rakho.
+ * Token refresh করার চেষ্টা করে।
+ * সফল হলে → নতুন token save করে true return করে।
+ * fail হলে → শুধু false return করে। কোনো logout নেই, কোনো toast নেই।
  */
 export const doRefresh = (): Promise<boolean> => {
   if (_refreshPromise) return _refreshPromise;
@@ -110,23 +110,18 @@ export const doRefresh = (): Promise<boolean> => {
     .then(({ data }) => {
       if (data?.accessToken) {
         saveTokens(data.accessToken, data.refreshToken ?? refreshToken);
-        return true;
+        return true as boolean;
       }
-      forceLogout();
-      return false;
+      // Server 200 দিলেও token না থাকলে — শুধু false, কোনো logout নেই
+      return false as boolean;
     })
-    .catch((err) => {
-      const status = err?.response?.status;
-      if (status === 400 || status === 401 || status === 403) {
-        forceLogout();
-        return false;
-      }
-      // Network error / 5xx — logout mat karo
-      return false;
+    .catch(() => {
+      // যেকোনো error (401, 403, network) — শুধু false, কোনো logout নেই
+      return false as boolean;
     })
     .finally(() => {
       _refreshPromise = null;
-    }) as Promise<boolean>;
+    });
 
   return _refreshPromise;
 };
@@ -144,13 +139,14 @@ export const ensureFreshToken = (): Promise<boolean> => {
   const refreshToken = getRefreshToken();
   if (!refreshToken) return Promise.resolve(false);
 
-  // ✅ doRefresh() use karo — same promise, no duplication
   return doRefresh();
 };
 
 // ─── Request Interceptor ──────────────────────────────────────────────────────
 
 api.interceptors.request.use((config) => {
+  if (config.url?.includes('/auth/refresh')) return config;
+
   const token = getAccessToken();
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
@@ -179,11 +175,17 @@ api.interceptors.response.use(
        code === 'NO_TOKEN'      ||
        code === 'INVALID_TOKEN');
 
-    if (!isTokenProblem || orig._retry || orig.url?.includes('/auth/refresh')) {
+    // Token সমস্যা নয়, বা already retry করা হয়েছে → শুধু reject
+    if (!isTokenProblem || orig._retry) {
       return Promise.reject(error);
     }
 
-    // ✅ Already refreshing — queue mein daal do
+    // Refresh endpoint নিজেই fail করলে → শুধু reject, কোনো logout নেই
+    if (orig.url?.includes('/auth/refresh')) {
+      return Promise.reject(error);
+    }
+
+    // Already refreshing → queue mein daal do
     if (_refreshPromise) {
       return new Promise((resolve, reject) => failedQueue.push({ resolve, reject }))
         .then((token) => {
@@ -195,7 +197,6 @@ api.interceptors.response.use(
 
     orig._retry = true;
 
-    // ✅ doRefresh() — same singleton, useAuthStore se alag nahi
     const ok = await doRefresh();
 
     if (ok) {
@@ -204,6 +205,7 @@ api.interceptors.response.use(
       orig.headers.Authorization = `Bearer ${newToken}`;
       return api(orig);
     } else {
+      // Refresh fail — শুধু request reject করো, user কে logout করো না
       processQueue(error, null);
       return Promise.reject(error);
     }
